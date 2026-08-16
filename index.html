@@ -190,7 +190,7 @@
         <div class="row">
           <div class="ctrl" id="ctrlTend">
             <label class="cap" for="tend">後ろ回転の残し方</label>
-            <input type="range" id="tend" min="0" max="100" value="72">
+            <input type="range" id="tend" min="0" max="100" value="80">
             <div class="ends"><span>抑える</span><span>残す</span></div>
           </div>
           <div class="ctrl" id="ctrlExit">
@@ -311,6 +311,61 @@ var HYPOTHESIS = {
     tiltMaxDeg       : { value: 24, hyp:true,  note:"1回ひねりを生むのに必要なtilt量" }
   }
 };
+
+/* ---------------------------------------------------------------------
+   宙返り進行プロファイル  φ(τ) / φ_total
+   ★ ここは「仮説」ではなく実測値。技ごとに差し替えられる形にしてある。
+     Back Full : bf.MOV（29.97fps）を全フレーム書き出して実測
+                 離地 frame 56 (t=1.802s) / 着水 frame 105 (t=3.470s) / 滞空 1.65s
+                 四分割の所要（滞空比）= 0.27 / 0.28 / 0.21 / 0.24
+                 → 第3クォーター（180°→270°）が最も速く、第1・第2が遅い
+     Cork 720  : 未測定。等速のまま。
+                 エアコーチの3方向動画が届いたら points を差し替えるだけでよい。
+   --------------------------------------------------------------------- */
+var SOMERSAULT_PROFILES = {
+  bf: {
+    measured: true,
+    source: "bf.MOV 29.97fps 全フレーム実測（2026-08-16）",
+    // [滞空進行率 τ, 宙返り進行率 φ/φ_total]
+    points: [[0.00,0.00],[0.27,0.25],[0.55,0.50],[0.76,0.75],[1.00,1.00]]
+  },
+  cork: {
+    measured: false,
+    source: "未測定。等速で仮置き。",
+    points: [[0.00,0.00],[1.00,1.00]]
+  }
+};
+
+// 単調3次エルミート補間（PCHIP / Fritsch–Carlson）。
+// Catmull-Rom と違いオーバーシュートしないので、宙返り位相が逆走しない。
+function makeMonotoneSpline(points){
+  var n = points.length;
+  var xs = points.map(function(p){ return p[0]; });
+  var ys = points.map(function(p){ return p[1]; });
+  if (n < 2) return function(){ return 0; };
+  var d = new Array(n-1), m = new Array(n);
+  for (var i=0;i<n-1;i++) d[i] = (ys[i+1]-ys[i]) / (xs[i+1]-xs[i]);
+  m[0] = d[0]; m[n-1] = d[n-2];
+  for (var j=1;j<n-1;j++) m[j] = (d[j-1]*d[j] <= 0) ? 0 : (d[j-1]+d[j])/2;
+  // Fritsch–Carlson の制限：単調性を保証する
+  for (var k=0;k<n-1;k++){
+    if (d[k] === 0){ m[k] = 0; m[k+1] = 0; continue; }
+    var a = m[k]/d[k], b = m[k+1]/d[k], s = a*a + b*b;
+    if (s > 9){ var tau = 3/Math.sqrt(s); m[k] = tau*a*d[k]; m[k+1] = tau*b*d[k]; }
+  }
+  return function(x){
+    if (x <= xs[0]) return ys[0];
+    if (x >= xs[n-1]) return ys[n-1];
+    var lo = 0, hi = n-1;
+    while (hi-lo > 1){ var mid = (lo+hi)>>1; if (xs[mid] <= x) lo = mid; else hi = mid; }
+    var h = xs[lo+1]-xs[lo], t = (x-xs[lo])/h, t2 = t*t, t3 = t2*t;
+    return (2*t3-3*t2+1)*ys[lo] + (t3-2*t2+t)*h*m[lo]
+         + (-2*t3+3*t2)*ys[lo+1] + (t3-t2)*h*m[lo+1];
+  };
+}
+Object.keys(SOMERSAULT_PROFILES).forEach(function(k){
+  SOMERSAULT_PROFILES[k].eval = makeMonotoneSpline(SOMERSAULT_PROFILES[k].points);
+});
 
 // 軸の作り方プリセット：tilt(t) の時間プロファイルだけを変える。
 // τ = flightPhaseNormalized (離地0 → 着地1)。戻り値は 0..1（tiltMax に対する比）。
@@ -444,7 +499,9 @@ var VENUES = {
     key:"bf", trick:"bf",
     name:"ウォータージャンプ宮城",
     profile: MIZUHO_PROFILE,
-    vx: 8.0, vy0: 6.25, landingRootY: 1.00, tStart: -1.80, tTail: 0.30,
+    // ★実測：滞空 1.65s（離地 frame56 t=1.802s → 着水 frame105 t=3.470s / 29.97fps）
+    //   airtimeS があるとき vy0 はこれを満たすよう逆算される。
+    vx: 8.0, airtimeS: 1.65, landingRootY: 1.00, tStart: -1.80, tTail: 0.30,
     camPresets: { side:[1.0,0.7,8.6], diag:[-5.6,2.8,7.4], back:[-9.0,1.8,0.8] },
     bg: 0x8fc4ee, fog: [0xa9cbe8, 90, 320]
   }
@@ -510,7 +567,8 @@ function generateSequence(trickKey, P){
   var V   = VENUES[trickKey];
   var HYP = HYPOTHESIS[trickKey];
   var prof = V.profile;
-  var RAMP_T = -0.42;                       // 台の中に入る時刻
+  var RAMP_T  = -0.42;                      // 台の中に入る時刻（上半身の軌道はここから）
+  var SWING_T = -0.13;                      // ★実測：腕の振り上げ／伸び上がりの開始
   var BLEND_T = -0.30;                      // 離地姿勢へ収束させ始める時刻
 
   // ---- 身体形状の効果（確立した原理：Hが同じでもIが小さいほど速く回る） ----
@@ -540,11 +598,19 @@ function generateSequence(trickKey, P){
   var phi0 = phiOf(H0, basis, Ltakeoff);
 
   // ---- 飛行時間 ----
+  // venue に airtimeS（実測滞空時間）があればそれを満たすよう vy0 を逆算する。
+  // 無ければ vy0 から滞空時間を解く（従来どおり）。放物線であることは変えない。
   var rootY0 = prof.lipH + MODEL.standingRootHeight * Ltakeoff.y;
-  var vy0 = V.vy0;
-  // rootY0 + vy0 t - g t^2/2 = landingRootY
-  var disc = vy0*vy0 + 2*G*(rootY0 - V.landingRootY);
-  var T_LAND = (vy0 + Math.sqrt(Math.max(disc, 0))) / G;
+  var T_LAND, vy0;
+  if (V.airtimeS){
+    T_LAND = V.airtimeS;                                   // ★実測
+    vy0 = (V.landingRootY - rootY0 + 0.5*G*T_LAND*T_LAND) / T_LAND;
+  } else {
+    vy0 = V.vy0;
+    // rootY0 + vy0 t - g t^2/2 = landingRootY
+    var disc = vy0*vy0 + 2*G*(rootY0 - V.landingRootY);
+    T_LAND = (vy0 + Math.sqrt(Math.max(disc, 0))) / G;
+  }
   var T_START = V.tStart, T_END = T_LAND + V.tTail;
 
   // ---- tilt(t) と psi(t) ----
@@ -567,9 +633,12 @@ function generateSequence(trickKey, P){
   }
 
   // ---- φ(t)：H まわりの周回。後ろ回転の残し方 × 身体の形 ----
+  // 進行は等速ではなく SOMERSAULT_PROFILES の実測プロファイルで駆動する。
+  // tendency = 0.80 のとき係数がちょうど 1.0（＝技の規定量）になる。
+  var somProfile = SOMERSAULT_PROFILES[trickKey] || SOMERSAULT_PROFILES.cork;
   var phiTotal = HYP.somersaultTurns.value * 2*Math.PI
-               * (0.15 + 0.85*P.tendency) * shapeFactor;
-  function phiAt(tau){ return phi0 + phiTotal * clamp(tau,0,1); }
+               * (0.20 + 1.00*P.tendency) * shapeFactor;
+  function phiAt(tau){ return phi0 + phiTotal * somProfile.eval(clamp(tau,0,1)); }
 
   // ---- 離地姿勢（飛行式の τ=0）。台の中はここへ収束させる → 連続 ----
   var qTakeoff = rootQuatFrom(H0, basis, tiltAt(0), phi0, 0);
@@ -578,13 +647,16 @@ function generateSequence(trickKey, P){
   var _e = new THREE.Euler();
   function localQuats(t){
     var air = t > 0;
-    var rs  = t <= RAMP_T ? 0 : (air ? 1 : smooth((t - RAMP_T)/(0 - RAMP_T)));
+    // ★実測：腕の振り上げは 0.13秒（frame 51→56）で、離地の瞬間にちょうど完了する。
+    //   台の中の沈み込み→伸展も同じ区間に収まる。
+    var rs  = t <= SWING_T ? 0 : (air ? 1 : smooth((t - SWING_T)/(0 - SWING_T)));
     var u   = air ? clamp(t/0.30, 0, 1) : 0;
     var s   = P.shape;
 
     var hipF, knF, armSwing, armSpread, elbow, spineZ;
     if (!air){
-      // 進入は中腰 → リップで一気に伸び上がる。腕は前下から頭上へ振り上げる。
+      // 進入は深く沈み込んだまま → 最後の0.13秒で一気に伸び上がる。
+      // 腕は胸の高さ・前方から頭上へ振り上げ、離地時に頭上へ到達する。
       hipF     = lerp(0.62, 0.10, rs);
       knF      = lerp(0.95, 0.12, rs);
       armSwing = lerp(1.15, 2.85, rs);
@@ -795,16 +867,19 @@ var venueCork = new THREE.Group(); scene.add(venueCork);
 var venueBf = new THREE.Group(); scene.add(venueBf);
 (function(){
   var P = MIZUHO_PROFILE;
+  // 実写（ref1_inrun.jpg / ref2_kicker.jpg）からサンプリングした色。
+  // ★構成：緑は「両サイドの壁だけ」。真ん中の滑走面は白〜淡い青灰。
   var COL = {
-    mat:0xe8ecef,      // 滑走面の白マット
-    green:0x7ec225,    // ライムグリーンの側壁
-    ply:0xc9a173,      // キッカーのベニヤ
+    mat:0xc8d6e0,      // インランの滑走面（白〜淡い青灰のプラスチックマット）
+    matLip:0xd6e4ef,   // キッカーのリップ滑走面（白）
+    green:0x4fb863,    // 両サイドの壁のみ
+    ply:0xb5a49c,      // キッカー側面のベニヤ（ベージュ〜薄茶）
     pipe:0x4a5158,     // 単管足場
-    deck:0x9aa0a0,     // 風化した木デッキ
+    deck:0x8e9aa8,     // 風化した木デッキ（灰青）
     coping:0xeef2f2,   // プール縁
     fence:0xb9c2c6,
     pergola:0x7a5a3c,
-    tree1:0x1d4222, tree2:0x27522a, tree3:0x143017,
+    tree1:0x2b412c, tree2:0x35502f, tree3:0x1f3222,
     grass:0x3a5c2c
   };
 
@@ -844,18 +919,20 @@ var venueBf = new THREE.Group(); scene.add(venueBf);
   // ---- プール（明るい緑〜ターコイズ＋エアレーションの白い泡）----
   // タイル境界が出ないよう、はみ出した泡は反対側にも描いて継ぎ目を消す
   var poolTex = canvasTex(256,256, function(cx,w,h){
-    cx.fillStyle = '#128f65'; cx.fillRect(0,0,w,h);
+    cx.fillStyle = '#5fc1c0'; cx.fillRect(0,0,w,h);      // ターコイズ
     var r = rng(7);
     function blob(x,y,rr,ry,rot){
       for (var dx=-1;dx<=1;dx++) for (var dy=-1;dy<=1;dy++){
         cx.beginPath(); cx.ellipse(x+dx*w, y+dy*h, rr, ry, rot, 0, 6.29); cx.fill();
       }
     }
-    cx.fillStyle = '#e6f7f0'; cx.globalAlpha = 0.15;
+    cx.fillStyle = '#73d7cb'; cx.globalAlpha = 0.30;      // 明るい方の帯
+    for (var j0=0;j0<30;j0++){ var r0 = 16+r()*30; blob(r()*w, r()*h, r0, r0*0.5, 0); }
+    cx.fillStyle = '#eafaf5'; cx.globalAlpha = 0.12;      // エアレーションの白い泡
     for (var i=0;i<200;i++) blob(r()*w, r()*h, 2+r()*10, (2+r()*10)*0.55, r()*3.14);
     cx.globalAlpha = 0.08;
     for (var j=0;j<34;j++){ var rr2 = 14+r()*26; blob(r()*w, r()*h, rr2, rr2*0.42, 0); }
-    cx.globalAlpha = 0.06; cx.fillStyle = '#065c40';
+    cx.globalAlpha = 0.16; cx.fillStyle = '#2f8f92';
     for (var k=0;k<26;k++){ var rr3 = 16+r()*30; blob(r()*w, r()*h, rr3, rr3*0.5, 0); }
   }, 3, 2.6);
   var pool = new THREE.Mesh(new THREE.PlaneGeometry(22,19),
@@ -871,32 +948,34 @@ var venueBf = new THREE.Group(); scene.add(venueBf);
 
   // ---- 手前のデッキ（灰色に風化した板張り）----
   var deckTex = canvasTex(256,256, function(cx,w,h){
-    cx.fillStyle='#9aa0a0'; cx.fillRect(0,0,w,h);
+    cx.fillStyle='#8e9aa8'; cx.fillRect(0,0,w,h);   // 風化した木＝灰青
     var r = rng(31);
     for (var i=0;i<16;i++){
       var y = i*(h/16);
-      cx.fillStyle = 'rgba(120,126,126,'+(0.5+r()*0.4)+')';
+      cx.fillStyle = 'rgba(96,106,118,'+(0.5+r()*0.4)+')';
       cx.fillRect(0, y, w, 2);
-      cx.fillStyle = 'rgba(175,180,178,'+(0.10+r()*0.16)+')';
+      cx.fillStyle = 'rgba(170,180,194,'+(0.10+r()*0.16)+')';
       cx.fillRect(0, y+3, w, (h/16)-5);
     }
   }, 6, 6);
   var deck = new THREE.Mesh(new THREE.PlaneGeometry(40,10),
     new THREE.MeshLambertMaterial({map:deckTex}));
   deck.rotation.x = -Math.PI/2; deck.position.set(6, 0.30, 15.0); venueBf.add(deck);
-  var deckEdge = boxMesh(40,0.34,0.3, 0x6f7574); deckEdge.position.set(6,0.15,10.0); venueBf.add(deckEdge);
+  var deckEdge = boxMesh(40,0.34,0.3, 0x67717e); deckEdge.position.set(6,0.15,10.0); venueBf.add(deckEdge);
 
   // ---- インラン（長い直線の助走路）----
   // 滑走面＝白〜シルバーのマットが横方向に並ぶ／両サイドにライムグリーンの壁
+  // 滑走面：白〜淡い青灰のマットが横方向に並び、継ぎ目の線が見える
   var matTex = canvasTex(128,128, function(cx,w,h){
-    cx.fillStyle='#e9edee'; cx.fillRect(0,0,w,h);
+    cx.fillStyle='#c8d6e0'; cx.fillRect(0,0,w,h);
     for (var i=0;i<10;i++){
-      cx.fillStyle = i%2 ? '#dfe4e5' : '#f3f6f6';
+      cx.fillStyle = i%2 ? '#b9cbdb' : '#d6dde3';    // マット1枚ごとの色ムラ
       cx.fillRect(0, i*(h/10), w, h/10);
-      cx.fillStyle='rgba(150,158,160,0.55)'; cx.fillRect(0, i*(h/10), w, 1.4);
+      cx.fillStyle='rgba(120,140,155,0.75)';          // 横方向の継ぎ目
+      cx.fillRect(0, i*(h/10), w, 1.8);
     }
   }, 1, 26);
-  var W = 3.2;                       // 滑走面の幅
+  var W = 3.4;                       // 滑走面の幅
   var inrunPts = [], sideL = [], sideR = [];
   var X0 = -40, X1 = -4.6, NSEG = 60;
   for (var i=0;i<=NSEG;i++){
@@ -917,18 +996,26 @@ var venueBf = new THREE.Group(); scene.add(venueBf);
     g.computeVertexNormals();
     venueBf.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({map:matTex, side:THREE.DoubleSide})));
   })();
-  // ライムグリーンの側壁
+  // 緑の側壁は「両サイドだけ」。滑走面の上に出るのは低いリップ(UP)にとどめ、
+  // 大きな緑の帯は滑走面より下のフェイシア(DN)にする。こうすると真ん中の白い
+  // 滑走面が上／斜めから見えたまま、横から見ると緑の帯が両サイドに走る。
   [1,-1].forEach(function(sgn){
-    var g = new THREE.BufferGeometry(), pos=[], HW=0.75;
+    var g = new THREE.BufferGeometry(), pos=[], UP=0.20, DN=0.46;
+    function quad(ax,ay,az, bx,by,bz, cx2,cy,cz, dx,dy,dz){
+      pos.push(ax,ay,az, bx,by,bz, cx2,cy,cz);
+      pos.push(ax,ay,az, cx2,cy,cz, dx,dy,dz);
+    }
     for (var i=0;i<NSEG;i++){
-      var a=inrunPts[i], b=inrunPts[i+1], z=sgn*(W/2);
-      pos.push(a[0],a[1],z,  b[0],b[1],z,  b[0],b[1]+HW,z);
-      pos.push(a[0],a[1],z,  b[0],b[1]+HW,z, a[0],a[1]+HW,z);
-      var z2 = sgn*(W/2+0.16);
-      pos.push(a[0],a[1]+HW,z,  b[0],b[1]+HW,z,  b[0],b[1]+HW,z2);
-      pos.push(a[0],a[1]+HW,z,  b[0],b[1]+HW,z2, a[0],a[1]+HW,z2);
-      pos.push(a[0],a[1],z2,  b[0],b[1],z2,  b[0],b[1]+HW,z2);
-      pos.push(a[0],a[1],z2,  b[0],b[1]+HW,z2, a[0],a[1]+HW,z2);
+      var a=inrunPts[i], b=inrunPts[i+1];
+      var z = sgn*(W/2), z2 = sgn*(W/2+0.17);
+      // 内側の面（滑走面の縁 -DN 〜 +UP）
+      quad(a[0],a[1]-DN,z,  b[0],b[1]-DN,z,  b[0],b[1]+UP,z,  a[0],a[1]+UP,z);
+      // 外側の面
+      quad(a[0],a[1]-DN,z2, b[0],b[1]-DN,z2, b[0],b[1]+UP,z2, a[0],a[1]+UP,z2);
+      // 天端
+      quad(a[0],a[1]+UP,z,  b[0],b[1]+UP,z,  b[0],b[1]+UP,z2, a[0],a[1]+UP,z2);
+      // 下端
+      quad(a[0],a[1]-DN,z,  b[0],b[1]-DN,z,  b[0],b[1]-DN,z2, a[0],a[1]-DN,z2);
     }
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
     g.computeVertexNormals();
@@ -975,7 +1062,15 @@ var venueBf = new THREE.Group(); scene.add(venueBf);
     var body = new THREE.Mesh(
       new THREE.ExtrudeGeometry(new THREE.Shape(pts), {depth:W+0.3, bevelEnabled:false}), mat(COL.ply));
     body.position.z = -(W+0.3)/2; venueBf.add(body);
-    // 白い滑走面
+    // キッカーのリップ滑走面は白（インランの淡青灰マットとは別）
+    var lipTex = canvasTex(128,128, function(cx,w,h){
+      cx.fillStyle='#d6e4ef'; cx.fillRect(0,0,w,h);
+      for (var i=0;i<8;i++){
+        cx.fillStyle = i%2 ? '#cddeec' : '#e4eef6';
+        cx.fillRect(0, i*(h/8), w, h/8);
+        cx.fillStyle='rgba(140,160,178,0.55)'; cx.fillRect(0, i*(h/8), w, 1.5);
+      }
+    }, 1, 7);
     var g = new THREE.BufferGeometry(), pos=[], uv=[], N=26;
     for (var i2=0;i2<N;i2++){
       var xa = KX0 + (0-KX0)*i2/N, xb = KX0 + (0-KX0)*(i2+1)/N;
@@ -988,7 +1083,7 @@ var venueBf = new THREE.Group(); scene.add(venueBf);
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(uv,2));
     g.computeVertexNormals();
-    venueBf.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({map:matTex, side:THREE.DoubleSide})));
+    venueBf.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({map:lipTex, side:THREE.DoubleSide})));
   })();
 
   // ---- 奥：金属の柵 ----
@@ -1125,7 +1220,13 @@ var labH = makeLabel('H','#e08a2e'), labL = makeLabel('L','#38d6c8'),
 /* =====================================================================
    7. UI + 状態
    ===================================================================== */
-var params = { trick:"cork", tendency:0.72, exit:0.66, shape:0.12, preset:"A", verify:false };
+// tendency = 0.80 で宙返り量がちょうど技の規定量（係数1.0）になる
+var params = { trick:"cork", tendency:0.80, exit:0.66, shape:0.12, preset:"A", verify:false };
+// 技ごとの既定値。bF は実測（レイアウト＝伸身、宙返りちょうど360°）を再現する値。
+var TRICK_DEFAULTS = {
+  cork: { shape:0.12, tendency:0.80 },
+  bf:   { shape:0.00, tendency:0.80 }
+};
 var view   = { showLTAP:true, showOmega:false };
 var state  = { t:0, playing:false, speed:0.40 };
 
@@ -1253,6 +1354,20 @@ function updateHypList(){
     html += '<dt>' + names[k] + (o.hyp ? ' <span style="color:#b58a4a">［仮説］</span>' : ' <span style="color:#5c6a76">［確立寄り］</span>') + '</dt>';
     html += '<dd>' + o.value + '　<span style="color:#6b7885">' + o.note + '</span></dd>';
   });
+  // 実測で確定した項目と仮説を、UI上でも区別して示す
+  var sp = SOMERSAULT_PROFILES[params.trick];
+  if (sp && sp.measured){
+    html += '<dt style="color:#6fb98a;margin-top:7px">実測で確定（' + sp.source + '）</dt>';
+    html += '<dd>滞空時間 1.65s ／ 宙返り 360° ／ 宙返りの進行プロファイル'
+          + '（τ=0.27で90°・0.55で180°・0.76で270°）／ 腕の振り上げ 0.13秒・離地で完了'
+          + ' ／ 終始レイアウト ／ 足から直立で着水</dd>';
+    html += '<dt style="color:#b58a4a">ひねりの発生タイミングは実測できていない</dt>';
+    html += '<dd><span style="color:#6b7885">単一視点・手持ちパンのため長軸まわりの位相が読めない。'
+          + 'ψ(t) と A/B/C は引き続き仮説。</span></dd>';
+  } else {
+    html += '<dt style="color:#8b98a5;margin-top:7px">宙返りの進行プロファイル</dt>';
+    html += '<dd><span style="color:#6b7885">' + (sp ? sp.source : '未測定') + '</span></dd>';
+  }
   html += '<dt style="color:#8b98a5;margin-top:7px">数値の比率（contact ○% / aerial ○%）は測定していないため表示しません。</dt>';
   document.getElementById('hypList').innerHTML = html;
 }
@@ -1296,9 +1411,11 @@ Array.prototype.forEach.call(document.querySelectorAll('.trickBtn'), function(b)
     Array.prototype.forEach.call(document.querySelectorAll('.trickBtn'), function(x){
       x.classList.toggle('on', x.dataset.trick === params.trick);
     });
-    // 技ごとの初期値：bFはレイアウト（伸身）、Corkは少し縮める
-    params.shape = params.trick === "bf" ? 0.04 : 0.12;
+    // 技ごとの初期値：bFは実測どおりレイアウト（伸身）、Corkは少し縮める
+    var def = TRICK_DEFAULTS[params.trick];
+    params.shape = def.shape; params.tendency = def.tendency;
     document.getElementById('shape').value = Math.round(params.shape*100);
+    document.getElementById('tend').value  = Math.round(params.tendency*100);
     setPlaying(false);
     applyVenue();
     rebuild(false);
@@ -1407,6 +1524,22 @@ window.OA720 = {
   seekTo     : function(t){ setPlaying(false); state.t = clamp(t, seq.timeRange.start, seq.timeRange.end); update(); },
   setView    : setView,
   renderNow  : function(){ controls.update(); renderer.render(scene, camera); },
+  somersaultProfiles: SOMERSAULT_PROFILES,
+  // 検証用：滞空進行率 tau における宙返り角[deg]（離地を0とする累積）
+  somersaultAngleAt: function(tau){
+    var s = seq, TL = s.timeRange.landing;
+    var i0 = frameIndexAt(0), i1 = frameIndexAt(TL*clamp(tau,0,1));
+    var H = met[i0].Hhat;
+    // H に垂直な平面へ射影した L の回転角を、フレームを追って積算する（＝Hまわりの周回角 φ）
+    function proj(v){ return v.clone().addScaledVector(H, -v.dot(H)).normalize(); }
+    var acc = 0, prev = proj(met[i0].Lhat);
+    for (var i=i0+1;i<=i1;i++){
+      var cur = proj(met[i].Lhat);
+      acc += Math.atan2(new V3().crossVectors(prev,cur).dot(H), prev.dot(cur));
+      prev = cur;
+    }
+    return acc*RAD;
+  },
   maxTilt: function(){
     var m = 0;
     for (var i=0;i<met.length;i++){ if (seq.frames[i].contactState==="aerial") m = Math.max(m, met[i].tilt); }
