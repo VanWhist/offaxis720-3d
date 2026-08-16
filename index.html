@@ -1,0 +1,1419 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Off Axis 720 / Back Full — 回転軸 3D教材（Phase 0.5）</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161c24; --line:#2a3441; --txt:#e6edf3;
+    --muted:#8b98a5; --accent:#e08a2e; --blue:#5aa9e6; --cyan:#38d6c8;
+    --mag:#c07ae0; --lock:#c0392b; --hyp:#b58a4a;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans CJK JP",sans-serif;}
+  #app{position:fixed;inset:0;display:flex;flex-direction:column;}
+  #stage{position:relative;flex:1 1 auto;min-height:0;}
+  #stage canvas{display:block;width:100%;height:100%;}
+
+  /* ---- HUD ---- */
+  #hud{position:absolute;top:0;left:0;right:0;padding:9px 11px;pointer-events:none;
+    display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+  #title{font-size:11px;letter-spacing:.05em;color:var(--muted);line-height:1.45;
+    text-shadow:0 1px 3px rgba(0,0,0,.6);}
+  #title b{display:block;font-size:14px;color:#fff;letter-spacing:0;}
+  #title i{font-style:normal;color:#c9d4de;}
+  #phaseBadge{font-size:10.5px;font-weight:700;letter-spacing:.09em;padding:4px 8px;
+    border-radius:4px;background:rgba(20,28,38,.85);border:1px solid var(--line);
+    color:var(--blue);white-space:nowrap;}
+
+  /* ---- 読み取り値（主表示4つ）---- */
+  #readout{position:absolute;left:11px;bottom:30px;pointer-events:none;
+    background:rgba(13,17,23,.72);border:1px solid var(--line);border-radius:5px;
+    padding:7px 9px;font-size:11px;line-height:1.65;min-width:172px;}
+  #readout .k{display:inline-block;width:11px;height:11px;border-radius:2px;
+    vertical-align:-1px;margin-right:6px;}
+  #readout .nm{color:#c9d4de;}
+  #readout .vl{float:right;color:#fff;font-variant-numeric:tabular-nums;}
+  #readout .tilt{border-top:1px solid var(--line);margin-top:4px;padding-top:4px;}
+  #readout .tilt b{font-size:14px;color:var(--cyan);}
+  #readout small{display:block;color:#6b7885;font-size:9.5px;line-height:1.4;margin-top:3px;}
+
+  #concept{position:absolute;left:11px;bottom:9px;font-size:10px;color:#7c8894;
+    pointer-events:none;letter-spacing:.02em;text-shadow:0 1px 3px rgba(0,0,0,.7);}
+
+  #viewbtns{position:absolute;right:11px;bottom:9px;display:flex;gap:5px;flex-wrap:wrap;
+    justify-content:flex-end;max-width:62%;}
+  #viewbtns button, #advBtn{pointer-events:auto;background:rgba(26,32,41,.9);
+    border:1px solid var(--line);color:var(--muted);font-size:10.5px;padding:5px 8px;
+    border-radius:4px;cursor:pointer;white-space:nowrap;}
+  #viewbtns button:active{background:#243040;}
+  #advBtn.on{background:var(--mag);color:#150c1c;border-color:var(--mag);font-weight:700;}
+
+  /* ---- Advanced overlay ---- */
+  #adv{position:absolute;right:11px;top:44px;width:238px;max-width:64%;display:none;
+    background:rgba(13,17,23,.93);border:1px solid var(--line);border-radius:6px;
+    padding:9px 10px;font-size:10.5px;line-height:1.55;pointer-events:auto;}
+  #adv.show{display:block;}
+  #adv h4{margin:0 0 5px;font-size:10.5px;letter-spacing:.08em;color:var(--mag);font-weight:700;}
+  #adv label{display:block;margin:3px 0;color:#c9d4de;cursor:pointer;}
+  #adv input[type=checkbox]{vertical-align:-2px;margin-right:5px;accent-color:var(--mag);}
+  #adv .sep{border-top:1px solid var(--line);margin:7px 0 5px;padding-top:5px;}
+  #adv dl{margin:0;font-size:10px;color:#8b98a5;}
+  #adv dt{color:var(--hyp);margin-top:4px;}
+  #adv dd{margin:0 0 0 0;color:#aab6c2;font-variant-numeric:tabular-nums;}
+  #adv .note{color:#6b7885;font-size:9.5px;margin-top:6px;line-height:1.45;}
+
+  /* ---- 操作パネル ---- */
+  #panel{flex:0 0 auto;background:var(--panel);border-top:1px solid var(--line);
+    padding:8px 10px calc(8px + env(safe-area-inset-bottom));
+    max-height:54vh;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+
+  #trickRow{display:flex;gap:6px;}
+  .trickBtn{flex:1;background:#1a2029;border:1px solid var(--line);border-radius:5px;
+    padding:5px 7px;cursor:pointer;text-align:left;color:var(--muted);line-height:1.28;}
+  .trickBtn b{display:block;font-size:12.5px;color:var(--txt);}
+  .trickBtn i{font-style:normal;font-size:9px;letter-spacing:.01em;}
+  .trickBtn.on{background:#233246;border-color:var(--blue);}
+  .trickBtn.on b{color:#fff;} .trickBtn.on i{color:var(--blue);}
+  #fisNote{font-size:9px;color:#6b7885;margin:3px 0 6px;line-height:1.35;}
+
+  .sec{font-size:10.5px;font-weight:700;letter-spacing:.05em;color:#a8b4c0;margin:0 0 3px;}
+  .row{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;}
+  .ctrl{flex:1 1 46%;min-width:148px;}
+  .ctrl.locked{opacity:.34;}
+  label.cap{display:block;font-size:11px;color:var(--txt);margin-bottom:2px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .hyp{font-size:8.5px;color:#150f06;background:var(--hyp);border-radius:3px;
+    padding:1px 3px;margin-left:4px;vertical-align:1px;letter-spacing:.03em;}
+  .ends{display:flex;justify-content:space-between;font-size:9px;color:#6b7885;margin-top:0;}
+  input[type=range]{width:100%;accent-color:var(--accent);height:20px;margin:0;}
+
+  #presetWrap{display:flex;border:1px solid var(--line);border-radius:5px;overflow:hidden;}
+  #presetWrap button{flex:1;background:#1a2029;border:0;color:var(--muted);
+    font-size:10.5px;font-weight:700;padding:4px 0;cursor:pointer;letter-spacing:.02em;line-height:1.2;}
+  #presetWrap button span{display:block;font-size:8px;font-weight:400;letter-spacing:0;}
+  #presetWrap button.on{background:var(--accent);color:#161005;}
+  #presetDesc{font-size:9px;color:#8b98a5;margin-top:2px;line-height:1.35;}
+
+  #takeoffDiv{display:flex;align-items:center;gap:7px;margin:8px 0 6px;
+    font-size:9px;font-weight:700;letter-spacing:.08em;color:#e6796b;white-space:nowrap;}
+  #takeoffDiv::before,#takeoffDiv::after{content:"";flex:1;height:1px;background:#5c2b26;}
+  #lockBar{display:none;align-items:center;gap:6px;flex-wrap:wrap;
+    background:#2a1614;border:1px solid #5c2b26;border-radius:4px;padding:4px 8px;margin-bottom:6px;}
+  #lockBar.show{display:flex;}
+  #lockBar span{font-size:10px;font-weight:700;letter-spacing:.07em;color:#e6796b;}
+  #lockBar small{font-size:9px;color:#a8756e;letter-spacing:0;}
+
+  #timeRow{display:flex;align-items:center;gap:7px;margin-top:8px;}
+  #playBtn,#resetBtn,#spdBtn{background:#1a2029;border:1px solid var(--line);color:var(--txt);
+    font-size:11px;padding:6px 9px;border-radius:5px;cursor:pointer;white-space:nowrap;}
+  #playBtn{min-width:64px;font-weight:700;}
+  #spdBtn{min-width:42px;color:var(--muted);}
+  #scrub{flex:1;accent-color:var(--blue);min-width:50px;}
+  #tlabel{font-size:10px;color:var(--muted);min-width:58px;text-align:right;
+    font-variant-numeric:tabular-nums;}
+
+  /* 広い画面：台の中／空中を左右に並べ、TAKEOFFの壁を縦線にする */
+  @media (min-width:900px){
+    #panelGrid{display:flex;align-items:stretch;gap:14px;}
+    #blkTrick{flex:0 0 230px;}
+    #blkContact,#blkAir{flex:1 1 0;min-width:0;}
+    #takeoffDiv{flex:0 0 22px;flex-direction:column;margin:0;gap:5px;
+      writing-mode:vertical-rl;text-orientation:mixed;font-size:8.5px;}
+    #takeoffDiv::before,#takeoffDiv::after{width:1px;height:auto;flex:1;}
+  }
+  @media (max-width:400px){
+    #readout{left:8px;bottom:26px;font-size:10px;min-width:150px;padding:5px 7px;}
+    #concept{font-size:8.5px;}
+    #viewbtns button,#advBtn{font-size:10px;padding:4px 7px;}
+    #title b{font-size:12.5px;} #title{font-size:10px;}
+  }
+  @media (max-height:700px){ #panel{max-height:58vh;} }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <div id="hud">
+      <div id="title">
+        <b id="titleMain">Off Axis 720（Cork 720）</b>
+        <i id="titleSub">Off Axis Jumps / 7op ・ モーグルキッカー</i>
+      </div>
+      <div id="phaseBadge">APPROACH</div>
+    </div>
+
+    <div id="adv">
+      <h4>ADVANCED / BODY AXES</h4>
+      <label><input type="checkbox" id="cbLTAP" checked> L / T / AP 身体3軸を表示</label>
+      <label><input type="checkbox" id="cbOmega"> ω（root角速度）を表示</label>
+      <label><input type="checkbox" id="cbVerify"> 検算：純バック宙返り（tilt=0・ひねり無し）</label>
+      <div class="sep"></div>
+      <dl id="hypList"></dl>
+      <div class="note">
+        ω と H は別物です。H は離地時に確定するワールド固定ベクトル（prescribed）、
+        ω は姿勢から数値微分した root の角速度。一般に H ∦ ω。
+      </div>
+    </div>
+
+    <div id="readout">
+      <div><i class="k" style="background:#dfe6ec"></i><span class="nm">Z 鉛直軸</span><span class="vl">固定</span></div>
+      <div><i class="k" style="background:#e08a2e"></i><span class="nm">H 角運動量</span><span class="vl" id="roH">—</span></div>
+      <div><i class="k" style="background:#38d6c8"></i><span class="nm">L 身体長軸</span><span class="vl"></span></div>
+      <div class="tilt"><span class="nm">Tilt</span><span class="vl"><b id="roTilt">—</b></span></div>
+      <small>tilt = asin(L̂·Ĥ)　Hは向きのみ（大きさは表示しない）</small>
+    </div>
+
+    <div id="concept">Prescribed H / Concept model — 物理ソルバではありません</div>
+    <div id="viewbtns">
+      <button id="vSide">横</button>
+      <button id="vDiag">斜め</button>
+      <button id="vBack">後ろ</button>
+      <button id="vH">H方向</button>
+      <button id="advBtn">BODY AXES</button>
+    </div>
+  </div>
+
+  <div id="panel">
+    <div id="panelGrid">
+      <div id="blkTrick">
+        <div id="trickRow">
+          <button class="trickBtn on" data-trick="cork"><b>Cork 720</b><i>Off Axis Jumps / 7op</i></button>
+          <button class="trickBtn" data-trick="bf"><b>Back Full</b><i>Inverted Jumps / bF</i></button>
+        </div>
+        <div id="fisNote">FIS上この2つは<b>別カテゴリ</b>です。バックフルはコークの一種ではありません。</div>
+      </div>
+
+      <div id="blkContact">
+        <div class="sec">■ 台の中（離地まで）</div>
+        <div class="row">
+          <div class="ctrl" id="ctrlTend">
+            <label class="cap" for="tend">後ろ回転の残し方</label>
+            <input type="range" id="tend" min="0" max="100" value="72">
+            <div class="ends"><span>抑える</span><span>残す</span></div>
+          </div>
+          <div class="ctrl" id="ctrlExit">
+            <label class="cap" for="exit">上半身の抜け方</label>
+            <input type="range" id="exit" min="0" max="100" value="66">
+            <div class="ends"><span>かぶる</span><span>起こす</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="takeoffDiv">TAKEOFF ── ここから先は回転を作れない</div>
+
+      <div id="blkAir">
+        <div class="sec">■ 空中（離地後）</div>
+        <div class="row">
+          <div class="ctrl">
+            <label class="cap">軸の作り方<span class="hyp">仮説</span></label>
+            <div id="presetWrap">
+              <button data-preset="A" class="on">A<span>台で作る</span></button>
+              <button data-preset="B">B<span>空中で作る</span></button>
+              <button data-preset="C">C<span>両方</span></button>
+            </div>
+          </div>
+          <div class="ctrl">
+            <label class="cap" for="shape">身体の形</label>
+            <input type="range" id="shape" min="0" max="100" value="12">
+            <div class="ends"><span>伸ばす</span><span>縮める</span></div>
+          </div>
+        </div>
+        <div id="presetDesc">A：離地の時点ですでに軸が傾いている（contact-dominant）</div>
+      </div>
+    </div>
+
+    <div id="lockBar">
+      <span>TAKEOFF INPUTS — LOCKED</span>
+      <small>離地後はHを作れません。変えるにはタイムラインを離地前に戻してください。</small>
+    </div>
+
+    <div id="timeRow">
+      <button id="playBtn">▶ 再生</button>
+      <button id="resetBtn">↺</button>
+      <button id="spdBtn">×0.4</button>
+      <input type="range" id="scrub" min="0" max="1000" value="0">
+      <div id="tlabel">t = -1.80s</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* =====================================================================
+   Off Axis 720 / Back Full — 回転軸 3D教材  Phase 0.5
+
+   層の分離（Phase 2で差し替わるのは MotionGenerator だけ）
+     0. CONVENTION        座標規約（不変・途中で変えない）
+     1. HYPOTHESIS        モーグル固有の「仮説」パラメータ（実測で差し替える所）
+     2. MODEL             ModelDefinition（セグメント階層・寸法・質量）
+     3. VENUE             会場定義（形状プロファイル＋3D構築）
+     4. MotionGenerator   → CanonicalMotionSequence
+     5. Analyzer          → Derived Metrics（L, tilt, omegaWorld, omegaBody）
+     6. Renderer          three.js
+     7. UI
+   ===================================================================== */
+
+
+/* =====================================================================
+   0. 座標規約  ── ここは固定。途中で変えない。
+   ===================================================================== */
+var CONVENTION = {
+  schemaVersion: "0.5.0",
+  handedness   : "right",
+  worldUp      : "+Y",
+  travel       : "+X",   // 進行方向
+  lateral      : "+Z",   // 選手から見て左
+  // 身体ローカル軸
+  bodyL        : "+Y_local",  // 身体長軸（頭方向）
+  bodyAP       : "+X_local",  // 前後軸（腹側が正）
+  bodyT        : "+Z_local",  // 左右軸（左が正）＝ 宙返り軸
+  // 回転の向き
+  backSomersault: "+Z まわりの正回転",
+  quaternionOrder: "(x, y, z, w)",
+  units        : { length:"m", time:"s", angle:"rad", angularVelocity:"rad/s" }
+};
+
+var DEG = Math.PI/180, RAD = 180/Math.PI;
+var G = 9.81;
+var V3 = THREE.Vector3, QT = THREE.Quaternion;
+var AX_X = new V3(1,0,0), AX_Y = new V3(0,1,0), AX_Z = new V3(0,0,1);
+
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function smooth(u){ u = clamp(u,0,1); return u*u*(3-2*u); }
+function lerp(a,b,u){ return a + (b-a)*u; }
+
+
+/* =====================================================================
+   1. HYPOTHESIS ── モーグル固有の「仮説」。実測が出たらここだけ差し替える。
+      確立した原理（飛行中Hはほぼ保存／身体形状で回転の現れ方が変わる）は
+      ここに入れず、下のエンジン側にハードコードしてある。
+   ===================================================================== */
+var HYPOTHESIS = {
+  cork: {
+    label: "Cork 720",
+    // H0 を水平に固定しない。コークのHがどれだけ水平から傾いて離地するかは未測定。
+    h0InclinationDeg : { value: 18, hyp:true,  note:"H0が水平からどれだけ傾いて離地するか" },
+    somersaultTurns  : { value: 1.00, hyp:true, note:"H まわりの周回数（φ）" },
+    twistTurns       : { value: 1.50, hyp:true, note:"身体長軸まわりの回転数（ψ）※L累積≒540°説" },
+    tiltMaxDeg       : { value: 46, hyp:true,  note:"飛行中のtiltのピーク" }
+  },
+  bf: {
+    label: "Back Full",
+    h0InclinationDeg : { value: 0,  hyp:false, note:"ほぼ純粋な宙返り＋ひねり → H0はほぼ水平" },
+    somersaultTurns  : { value: 1.00, hyp:false, note:"バック1回転" },
+    twistTurns       : { value: 1.00, hyp:false, note:"ひねり1回転" },
+    tiltMaxDeg       : { value: 24, hyp:true,  note:"1回ひねりを生むのに必要なtilt量" }
+  }
+};
+
+// 軸の作り方プリセット：tilt(t) の時間プロファイルだけを変える。
+// τ = flightPhaseNormalized (離地0 → 着地1)。戻り値は 0..1（tiltMax に対する比）。
+var TILT_PRESETS = {
+  A: { label:"A：離地の時点ですでに軸が傾いている（contact-dominant）",
+       shape: function(tau){ return (0.92 + 0.08*smooth(tau/0.25)) * landFade(tau); } },
+  B: { label:"B：離地時の傾きは小さく、離地直後に軸が立ち上がる（aerial-dominant）",
+       shape: function(tau){ return (0.06 + 0.94*smooth((tau-0.02)/0.33)) * landFade(tau); } },
+  C: { label:"C：離地時に一部つくり、空中でも増える（mixed）",
+       shape: function(tau){ return (0.45 + 0.55*smooth((tau-0.05)/0.45)) * landFade(tau); } }
+};
+// 着地に向けて tilt を戻す＝ひねりを止める（確立した原理側）
+function landFade(tau){ return tau < 0.82 ? 1 : lerp(1, 0.10, smooth((tau-0.82)/0.18)); }
+
+
+/* =====================================================================
+   2. ModelDefinition
+      Phase 2 の reduced-order model（Pelvis / Torso / Arms / Legs+skis）と
+      整合するようセグメントを分けてある。胸郭と骨盤は一体化しない。
+      ※ ブーツとスキーは長辺を X（進行方向）に取る。Zに長くするとスノーボードになる。
+   ===================================================================== */
+var MODEL = {
+  athlete: { heightM: 1.72, massKg: 68 },
+  // joints: 各セグメントの親と、親から見た関節中心オフセット
+  joints: [
+    { name:"spine",     parent:"pelvis", offset:[0, 0.11, 0] },
+    { name:"neck",      parent:"spine",  offset:[0, 0.50, 0] },
+    { name:"shoulderL", parent:"spine",  offset:[0, 0.42,  0.22] },
+    { name:"shoulderR", parent:"spine",  offset:[0, 0.42, -0.22] },
+    { name:"elbowL",    parent:"shoulderL", offset:[0,-0.30, 0] },
+    { name:"elbowR",    parent:"shoulderR", offset:[0,-0.30, 0] },
+    { name:"hipL",      parent:"pelvis", offset:[0,-0.11,  0.11] },
+    { name:"hipR",      parent:"pelvis", offset:[0,-0.11, -0.11] },
+    { name:"kneeL",     parent:"hipL",   offset:[0,-0.42, 0] },
+    { name:"kneeR",     parent:"hipR",   offset:[0,-0.42, 0] },
+    { name:"ankleL",    parent:"kneeL",  offset:[0,-0.40, 0] },
+    { name:"ankleR",    parent:"kneeR",  offset:[0,-0.40, 0] }
+  ],
+  // 描画体（Phase 2の慣性計算用に mass / com を持たせてある）
+  bodies: [
+    { name:"pelvis",   joint:"pelvis",    shape:"box",    dim:[0.30,0.22,0.34], com:[0,0,0],           mass:10.5, color:0x3f6fa8 },
+    { name:"thorax",   joint:"spine",     shape:"box",    dim:[0.32,0.46,0.38], com:[0,0.23,0],        mass:22.0, color:0xe08a2e },
+    { name:"head",     joint:"neck",      shape:"sphere", dim:[0.125],          com:[0,0.13,0],        mass: 5.0, color:0xd9c3a5 },
+    { name:"upArmL",   joint:"shoulderL", shape:"box",    dim:[0.095,0.30,0.095],com:[0,-0.15,0],      mass: 2.0, color:0x9aa7b4 },
+    { name:"upArmR",   joint:"shoulderR", shape:"box",    dim:[0.095,0.30,0.095],com:[0,-0.15,0],      mass: 2.0, color:0x9aa7b4 },
+    { name:"foreArmL", joint:"elbowL",    shape:"box",    dim:[0.085,0.27,0.085],com:[0,-0.135,0],     mass: 1.5, color:0x9aa7b4 },
+    { name:"foreArmR", joint:"elbowR",    shape:"box",    dim:[0.085,0.27,0.085],com:[0,-0.135,0],     mass: 1.5, color:0x9aa7b4 },
+    { name:"poleL",    joint:"elbowL",    shape:"box",    dim:[0.022,1.05,0.022],com:[0.02,-0.72,0],   mass: 0.3, color:0xb9c4cf, roll: 0.10 },
+    { name:"poleR",    joint:"elbowR",    shape:"box",    dim:[0.022,1.05,0.022],com:[0.02,-0.72,0],   mass: 0.3, color:0xb9c4cf, roll:-0.10 },
+    { name:"thighL",   joint:"hipL",      shape:"box",    dim:[0.135,0.42,0.135],com:[0,-0.21,0],      mass: 8.0, color:0x9aa7b4 },
+    { name:"thighR",   joint:"hipR",      shape:"box",    dim:[0.135,0.42,0.135],com:[0,-0.21,0],      mass: 8.0, color:0x9aa7b4 },
+    { name:"shankL",   joint:"kneeL",     shape:"box",    dim:[0.115,0.40,0.115],com:[0,-0.20,0],      mass: 3.5, color:0x9aa7b4 },
+    { name:"shankR",   joint:"kneeR",     shape:"box",    dim:[0.115,0.40,0.115],com:[0,-0.20,0],      mass: 3.5, color:0x9aa7b4 },
+    // ── ブーツ・スキー：長辺は X（進行方向）。
+    { name:"bootL",    joint:"ankleL",    shape:"box",    dim:[0.28,0.17,0.14],  com:[0.03,-0.08,0],   mass: 1.8, color:0x2b323a },
+    { name:"bootR",    joint:"ankleR",    shape:"box",    dim:[0.28,0.17,0.14],  com:[0.03,-0.08,0],   mass: 1.8, color:0x2b323a },
+    { name:"skiL",     joint:"ankleL",    shape:"box",    dim:[1.70,0.028,0.105],com:[0.14,-0.175,0],  mass: 1.6, color:0x1c2128 },
+    { name:"skiR",     joint:"ankleR",    shape:"box",    dim:[1.70,0.028,0.105],com:[0.14,-0.175,0],  mass: 1.6, color:0x1c2128 },
+    { name:"tipL",     joint:"ankleL",    shape:"box",    dim:[0.16,0.05,0.105], com:[0.83,-0.155,0],  mass: 0.1, color:0x1c2128 },
+    { name:"tipR",     joint:"ankleR",    shape:"box",    dim:[0.16,0.05,0.105], com:[0.83,-0.155,0],  mass: 0.1, color:0x1c2128 }
+  ],
+  // 立位で骨盤原点が接地面からどれだけ上か
+  standingRootHeight: 1.05
+};
+var JOINT_NAMES = MODEL.joints.map(function(j){ return j.name; });
+
+
+/* =====================================================================
+   3. VENUE  ── 形状プロファイル（MotionGeneratorが使う）＋3D構築
+   ===================================================================== */
+
+// --- プロファイルを制御点から作る（x → y のルックアップ） ---
+function makeProfile(points, samples){
+  samples = samples || 400;
+  var curve = new THREE.CatmullRomCurve3(points.map(function(p){ return new V3(p[0], p[1], 0); }), false, "catmullrom", 0.5);
+  var pts = curve.getPoints(samples);
+  var xs = pts.map(function(p){ return p.x; }), ys = pts.map(function(p){ return p.y; });
+  return {
+    points: pts,
+    xMin: xs[0], xMax: xs[xs.length-1],
+    heightAt: function(x){
+      if (x <= xs[0]) return ys[0] + (xs[0]-x) * (ys[0]-ys[1])/(xs[1]-xs[0]);
+      if (x >= xs[xs.length-1]) return ys[ys.length-1];
+      var lo = 0, hi = xs.length-1;
+      while (hi - lo > 1){ var mid = (lo+hi)>>1; if (xs[mid] <= x) lo = mid; else hi = mid; }
+      var u = (x - xs[lo]) / (xs[hi]-xs[lo] || 1e-9);
+      return lerp(ys[lo], ys[hi], u);
+    },
+    slopeAt: function(x){
+      var d = 0.12;
+      return Math.atan2(this.heightAt(x+d) - this.heightAt(x-d), 2*d);
+    }
+  };
+}
+
+// モーグルキッカー（Phase 0 のグラフィックを維持）
+var MOGUL_PROFILE = (function(){
+  var X0 = -4.0, LIP_H = 1.8, pts = [];
+  for (var i=0;i<=26;i++){
+    var x = X0 + (0-X0)*i/26;
+    var u = (x - X0)/(0 - X0);
+    pts.push([x, LIP_H*Math.pow(u,3.0)]);
+  }
+  var p = makeProfile(pts, 300);
+  p.lipX = 0; p.lipH = LIP_H;
+  return p;
+})();
+
+// ウォータージャンプ宮城（bf.MOV / ref1〜ref5 から起こした簡略再現）
+// 長い直線インラン（約27°）→ 下部トランジション → 別体のキッカー（リップ約47°）
+var MIZUHO_PROFILE = (function(){
+  var p = makeProfile([
+    [-40, 17.6], [-34, 14.6], [-26, 10.5], [-18, 6.5], [-13, 3.9],
+    [-10, 2.6], [-7.5, 1.75], [-5.5, 1.38], [-3.6, 1.42], [-2.2, 1.72],
+    [-1.2, 2.12], [-0.55, 2.62], [0, 3.20]
+  ], 500);
+  p.lipX = 0; p.lipH = 3.20;
+  return p;
+})();
+
+var VENUES = {
+  cork: {
+    key:"cork", trick:"cork",
+    name:"モーグルキッカー",
+    profile: MOGUL_PROFILE,
+    vx: 10.0, vy0: 7.8, landingRootY: MODEL.standingRootHeight, tStart: -1.20, tTail: 0.28,
+    camPresets: { side:[0,0.6,8.0], diag:[-5.4,2.2,6.0], back:[-8.2,1.3,0.4] },
+    bg: 0x0d1117, fog: [0x0d1117, 28, 90]
+  },
+  bf: {
+    key:"bf", trick:"bf",
+    name:"ウォータージャンプ宮城",
+    profile: MIZUHO_PROFILE,
+    vx: 8.0, vy0: 6.25, landingRootY: 1.00, tStart: -1.80, tTail: 0.30,
+    camPresets: { side:[1.0,0.7,8.6], diag:[-5.6,2.8,7.4], back:[-9.0,1.8,0.8] },
+    bg: 0x8fc4ee, fog: [0xa9cbe8, 90, 320]
+  }
+};
+
+
+/* =====================================================================
+   4. MotionGenerator  ── Canonical Motion Sequence を生成する
+      Phase 2 ではこの関数だけを PhysicsSolver に差し替える。
+      Renderer / Analyzer は変更不要。
+
+      root orientation は H0 + tilt(t) + phi(t) + psi(t) から生成する。
+        H0    : 離地時に確定する prescribed vector（ワールド固定）
+        tilt  : 身体長軸Lが「Hに垂直な平面」から外れる量   ← A/B/Cはここだけを変える
+        phi   : L が H の周囲を回る位相（宙返り位相）
+        psi   : 身体長軸まわりの姿勢位相（ひねり位相）
+      ω（角速度）はここでは作らない。Analyzer が姿勢から数値微分で出す別量。
+   ===================================================================== */
+
+// H0 を基準とした tilt-cone の正規直交基底 (e1, e2, H)
+function coneBasis(Hhat){
+  var ref = Math.abs(Hhat.dot(AX_Y)) > 0.97 ? AX_X : AX_Y;
+  var e1 = ref.clone().sub(Hhat.clone().multiplyScalar(ref.dot(Hhat))).normalize();
+  var e2 = new V3().crossVectors(Hhat, e1).normalize();
+  return { e1:e1, e2:e2 };
+}
+// L̂ = cos(tilt)(cosφ e1 + sinφ e2) + sin(tilt) Ĥ   →  asin(L̂·Ĥ) = tilt
+function longAxis(Hhat, basis, tilt, phi){
+  var ct = Math.cos(tilt), st = Math.sin(tilt);
+  return new V3()
+    .addScaledVector(basis.e1, ct*Math.cos(phi))
+    .addScaledVector(basis.e2, ct*Math.sin(phi))
+    .addScaledVector(Hhat,     st)
+    .normalize();
+}
+// root quaternion:
+//   bodyY(=L軸) = L̂
+//   bodyZ(=T軸・宙返り軸) = H のうち L に直交する成分  → tilt=0 のとき T̂ = Ĥ（純粋な宙返り）
+//   bodyX(=AP軸) = bodyY × bodyZ
+//   これを長軸まわりに ψ だけ回したものが姿勢。
+function rootQuatFrom(Hhat, basis, tilt, phi, psi){
+  var L  = longAxis(Hhat, basis, tilt, phi);
+  var z0 = Hhat.clone().addScaledVector(L, -Hhat.dot(L));   // H の L直交成分
+  if (z0.lengthSq() < 1e-8) z0.copy(basis.e1);              // L ∥ H の縮退回避
+  z0.normalize();
+  var spin = new QT().setFromAxisAngle(L, psi);
+  var bz = z0.clone().applyQuaternion(spin);
+  var bx = new V3().crossVectors(L, bz).normalize();
+  var m = new THREE.Matrix4().makeBasis(bx, L, bz);
+  return new QT().setFromRotationMatrix(m);
+}
+// 与えられた身体長軸が cone 上のどの φ に当たるか
+function phiOf(Hhat, basis, L){
+  return Math.atan2(L.dot(basis.e2), L.dot(basis.e1));
+}
+
+/**
+ * @param {string} trickKey  "cork" | "bf"
+ * @param {object} P  { tendency, exit, shape, preset, verify }
+ * @returns {CanonicalMotionSequence}
+ */
+function generateSequence(trickKey, P){
+  var V   = VENUES[trickKey];
+  var HYP = HYPOTHESIS[trickKey];
+  var prof = V.profile;
+  var RAMP_T = -0.42;                       // 台の中に入る時刻
+  var BLEND_T = -0.30;                      // 離地姿勢へ収束させ始める時刻
+
+  // ---- 身体形状の効果（確立した原理：Hが同じでもIが小さいほど速く回る） ----
+  var shapeFactor = 1 + 0.45 * P.shape;     // 縮める → 慣性小 → 回転が速い
+
+  // ---- 台の中の姿勢 → 離地時の身体長軸 ----
+  function pitchAt(t){
+    var target = lerp(34, -20, P.exit) * DEG;
+    if (t <= RAMP_T) return 0;
+    return target * smooth((t - RAMP_T)/(0 - RAMP_T));
+  }
+  function slopeQuat(t){
+    var x = V.vx * t;
+    var th = 0.80 * prof.slopeAt(Math.min(x, prof.lipX)) - pitchAt(t);
+    return new QT().setFromAxisAngle(AX_Z, th);
+  }
+
+  // ---- H0（離地時に確定する prescribed vector・ワールド固定） ----
+  // 進行方向(+X)まわりに傾ける。bF は 0°（ほぼ水平）、Cork は仮説値。
+  var incl = (P.verify ? 0 : HYP.h0InclinationDeg.value) * DEG;
+  var H0 = new V3(0, Math.sin(incl), Math.cos(incl)).normalize();
+  var basis = coneBasis(H0);
+
+  // ---- 離地時の位相 φ0 ----
+  var qTakeoffSlope = slopeQuat(0);
+  var Ltakeoff = AX_Y.clone().applyQuaternion(qTakeoffSlope);
+  var phi0 = phiOf(H0, basis, Ltakeoff);
+
+  // ---- 飛行時間 ----
+  var rootY0 = prof.lipH + MODEL.standingRootHeight * Ltakeoff.y;
+  var vy0 = V.vy0;
+  // rootY0 + vy0 t - g t^2/2 = landingRootY
+  var disc = vy0*vy0 + 2*G*(rootY0 - V.landingRootY);
+  var T_LAND = (vy0 + Math.sqrt(Math.max(disc, 0))) / G;
+  var T_START = V.tStart, T_END = T_LAND + V.tTail;
+
+  // ---- tilt(t) と psi(t) ----
+  var preset = TILT_PRESETS[P.preset] || TILT_PRESETS.A;
+  var tiltMax = (P.verify ? 0 : HYP.tiltMaxDeg.value) * DEG;
+  function tiltAt(tau){ return tiltMax * clamp(preset.shape(clamp(tau,0,1)), 0, 1.2); }
+
+  // ψ̇ ∝ sin(tilt)（確立した原理：ひねりの立ち上がりはtiltが作る）。
+  // 合計ひねり量が技の仕様に一致するよう正規化する。
+  var NS = 240, acc = new Float64Array(NS+1), sum = 0;
+  for (var i=1;i<=NS;i++){
+    sum += Math.sin(tiltAt((i-0.5)/NS)) / NS;
+    acc[i] = sum;
+  }
+  var psiTotal = (P.verify ? 0 : HYP.twistTurns.value * 2*Math.PI * shapeFactor);
+  function psiAt(tau){
+    if (sum < 1e-9) return 0;
+    var f = clamp(tau,0,1)*NS, i0 = Math.floor(f), i1 = Math.min(i0+1, NS);
+    return psiTotal * lerp(acc[i0], acc[i1], f-i0) / sum;
+  }
+
+  // ---- φ(t)：H まわりの周回。後ろ回転の残し方 × 身体の形 ----
+  var phiTotal = HYP.somersaultTurns.value * 2*Math.PI
+               * (0.15 + 0.85*P.tendency) * shapeFactor;
+  function phiAt(tau){ return phi0 + phiTotal * clamp(tau,0,1); }
+
+  // ---- 離地姿勢（飛行式の τ=0）。台の中はここへ収束させる → 連続 ----
+  var qTakeoff = rootQuatFrom(H0, basis, tiltAt(0), phi0, 0);
+
+  // ---- セグメントのローカル姿勢 ----
+  var _e = new THREE.Euler();
+  function localQuats(t){
+    var air = t > 0;
+    var rs  = t <= RAMP_T ? 0 : (air ? 1 : smooth((t - RAMP_T)/(0 - RAMP_T)));
+    var u   = air ? clamp(t/0.30, 0, 1) : 0;
+    var s   = P.shape;
+
+    var hipF, knF, armSwing, armSpread, elbow, spineZ;
+    if (!air){
+      // 進入は中腰 → リップで一気に伸び上がる。腕は前下から頭上へ振り上げる。
+      hipF     = lerp(0.62, 0.10, rs);
+      knF      = lerp(0.95, 0.12, rs);
+      armSwing = lerp(1.15, 2.85, rs);
+      armSpread= lerp(0.10, 0.22, rs);
+      elbow    = lerp(-0.85, -0.15, rs);
+      spineZ   = -pitchAt(t)*0.35;
+    } else {
+      // 空中：伸ばす=レイアウト（bF映像どおり）／縮める=タック
+      var exH = lerp(0.10, 0.06, u), exK = lerp(0.12, 0.10, u);
+      hipF     = lerp(exH, 1.55, s);
+      knF      = lerp(exK, 1.95, s);
+      armSwing = lerp(lerp(2.85, 2.35, u), 1.15, s);
+      armSpread= lerp(lerp(0.22, 0.55, u), 0.16, s);
+      elbow    = lerp(-0.12, -1.05, s);
+      spineZ   = lerp(0, 0.30, s);
+    }
+    var ankle = knF*0.35 - hipF*0.35;
+
+    var q = {};
+    function set(name, rx, rz){ _e.set(rx||0, 0, rz||0, 'XYZ'); q[name] = new QT().setFromEuler(_e); }
+    set("spine",     0,          spineZ);
+    set("neck",      0,          air ? -0.10 : 0.12);
+    set("shoulderL", armSpread,  armSwing);
+    set("shoulderR", -armSpread, armSwing);
+    set("elbowL",    0,          elbow);
+    set("elbowR",    0,          elbow);
+    set("hipL",      0,          hipF);
+    set("hipR",      0,          hipF);
+    set("kneeL",     0,         -knF);
+    set("kneeR",     0,         -knF);
+    set("ankleL",    0,          ankle);
+    set("ankleR",    0,          ankle);
+    return q;
+  }
+
+  // ---- フレーム生成 ----
+  var DT = 1/90;
+  var frames = [], prevQ = null;
+  for (var t = T_START; t <= T_END + 1e-9; t += DT){
+    var tc = Math.min(t, T_END);
+    var air = tc > 0;
+    var pos, quat;
+
+    if (!air){
+      var qs = slopeQuat(tc);
+      // 離地の直前 BLEND_T→0 で、離地姿勢（＝Hとtiltが確定した姿勢）へ収束させる。
+      // preset A ではここで「台の中で軸が傾いていく」のが見える。
+      if (tc > BLEND_T){
+        var b = smooth((tc - BLEND_T)/(0 - BLEND_T));
+        qs = qs.clone().slerp(qTakeoff, b);
+      }
+      quat = qs;
+      var x = V.vx * tc;
+      var up = AX_Y.clone().applyQuaternion(quat).multiplyScalar(MODEL.standingRootHeight);
+      pos = new V3(x, prof.heightAt(Math.min(x, prof.lipX)), 0).add(up);
+    } else {
+      var tf = Math.min(tc, T_LAND);
+      var tau = tf / T_LAND;
+      quat = rootQuatFrom(H0, basis, tiltAt(tau), phiAt(tau), psiAt(tau));
+      pos = new V3(V.vx * tf, rootY0 + vy0*tf - 0.5*G*tf*tf, 0);
+    }
+
+    // quaternion の符号を連続化（数値微分でωを出すため必須）
+    if (prevQ && (prevQ.x*quat.x + prevQ.y*quat.y + prevQ.z*quat.z + prevQ.w*quat.w) < 0){
+      quat.set(-quat.x, -quat.y, -quat.z, -quat.w);
+    }
+    prevQ = quat;
+
+    frames.push({
+      t: tc,
+      phase: tc < RAMP_T ? "APPROACH" : (tc < 0 ? "RAMP" : (tc < T_LAND ? "FLIGHT" : "LANDING")),
+      contactState: tc <= 0 ? "contact" : "aerial",
+      flightPhaseNormalized: air ? clamp(Math.min(tc,T_LAND)/T_LAND, 0, 1) : null,
+      rootPosition:   [pos.x, pos.y, pos.z],
+      rootQuaternion: [quat.x, quat.y, quat.z, quat.w],
+      segments: localQuats(tc)
+    });
+    if (tc >= T_END) break;
+  }
+
+  return {
+    schemaVersion: CONVENTION.schemaVersion,
+    coordinateConvention: CONVENTION,
+    model: { athlete: MODEL.athlete, standingRootHeight: MODEL.standingRootHeight },
+    trick: { key: trickKey, label: HYPOTHESIS[trickKey].label,
+             fisCategory: trickKey === "cork" ? "Off Axis Jumps (7op)" : "Inverted Jumps (bF)" },
+    venue: { key: V.key, name: V.name },
+    generator: { type:"H-constrained kinematic scaffold", version:"0.5.0",
+                 note:"物理ソルバではない。Phase 2 で PhysicsSolver に差し替える。" },
+    // H0 は prescribed（ワールド固定）。ωではない。
+    takeoff: { H0:[H0.x,H0.y,H0.z], H0Provenance:"prescribed", phi0:phi0,
+               tiltAtTakeoff: tiltAt(0), tiltMax: tiltMax,
+               psiTotal: psiTotal, phiTotal: phiTotal, preset: P.preset },
+    events: { TAKEOFF:0, APEX: vy0/G, LANDING: T_LAND },
+    timeRange: { start: T_START, end: T_END, takeoff: 0, landing: T_LAND },
+    params: { tendency:P.tendency, exit:P.exit, shape:P.shape, preset:P.preset, verify:!!P.verify },
+    frames: frames
+  };
+}
+
+
+/* =====================================================================
+   5. Analyzer  ── Derived Metrics（正データではない。常にここで再計算する）
+      Canonical State を唯一の正として、L / tilt / ω を導出する。
+   ===================================================================== */
+function analyze(seq){
+  var H = new V3().fromArray(seq.takeoff.H0).normalize();
+  var n = seq.frames.length;
+  var out = new Array(n);
+  var qs = seq.frames.map(function(f){ return new QT().fromArray(f.rootQuaternion); });
+
+  for (var i=0;i<n;i++){
+    var q = qs[i];
+    var L = AX_Y.clone().applyQuaternion(q);
+    var T = AX_Z.clone().applyQuaternion(q);
+    var AP= AX_X.clone().applyQuaternion(q);
+
+    // ★ tilt = asin(L̂·Ĥ)  ─ 身体長軸が「Hに垂直な平面」からどれだけ外れたか。
+    //   純粋な宙返りでは L ⟂ H なので tilt = 0。（「HとLのなす角」ではない）
+    var tilt = Math.asin(clamp(Math.abs(L.dot(H)), 0, 1));
+
+    // ω：姿勢の数値微分。H とは別概念・別変数。
+    var i0 = Math.max(0,i-1), i1 = Math.min(n-1,i+1);
+    var dt = seq.frames[i1].t - seq.frames[i0].t;
+    var w = new V3();
+    if (dt > 1e-9){
+      var a = qs[i0], b = qs[i1];
+      var dq = { x:(b.x-a.x)/dt, y:(b.y-a.y)/dt, z:(b.z-a.z)/dt, w:(b.w-a.w)/dt };
+      // ω_world = 2 * q̇ ⊗ q*
+      var cx=-q.x, cy=-q.y, cz=-q.z, cw=q.w;
+      w.set(
+        2*( dq.w*cx + dq.x*cw + dq.y*cz - dq.z*cy),
+        2*( dq.w*cy - dq.x*cz + dq.y*cw + dq.z*cx),
+        2*( dq.w*cz + dq.x*cy - dq.y*cx + dq.z*cw)
+      );
+    }
+    var wb = w.clone().applyQuaternion(q.clone().invert());
+    out[i] = {
+      Lhat:L, That:T, APhat:AP, Hhat:H,
+      tilt: tilt,
+      omegaWorld: w,
+      omegaBody: { AP: wb.x, L: wb.y, T: wb.z },
+      omegaMag: w.length()
+    };
+  }
+  return out;
+}
+
+
+/* =====================================================================
+   6. Renderer
+   ===================================================================== */
+var stage = document.getElementById('stage');
+var scene = new THREE.Scene();
+var camera = new THREE.PerspectiveCamera(46, 1, 0.1, 800);
+// ?capture=1 を付けるとcanvasを画像として保存できる（検証用。描画結果自体は変わらない）
+var renderer = new THREE.WebGLRenderer({
+  antialias:true,
+  preserveDrawingBuffer: /[?&]capture=1/.test(location.search)
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+stage.appendChild(renderer.domElement);
+
+var controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.minDistance = 3.0; controls.maxDistance = 70;
+var followTarget = new V3(0, 3, 0);
+
+var hemi = new THREE.HemisphereLight(0xcfe3f5, 0x2b3440, 0.95); scene.add(hemi);
+var keyLight = new THREE.DirectionalLight(0xffffff, 0.75);
+keyLight.position.set(-6, 12, 9); scene.add(keyLight);
+
+function mat(color){ return new THREE.MeshLambertMaterial({color:color}); }
+function boxMesh(w,h,d,color){ return new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat(color)); }
+
+// --- canvas テクスチャ ---
+function canvasTex(w,h,draw,repX,repY){
+  var cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+  draw(cv.getContext('2d'), w, h);
+  var tx = new THREE.CanvasTexture(cv);
+  if (repX||repY){ tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.repeat.set(repX||1, repY||1); }
+  return tx;
+}
+// 簡易決定論PRNG（毎回同じ会場になるように）
+function rng(seed){ var s = seed; return function(){ s = (s*1664525 + 1013904223) % 4294967296; return s/4294967296; }; }
+
+/* ---------- 会場A：モーグルキッカー（Phase 0のグラフィックを維持） ---------- */
+var venueCork = new THREE.Group(); scene.add(venueCork);
+(function(){
+  var ground = new THREE.Mesh(new THREE.PlaneGeometry(400,400), mat(0x2c3742));
+  ground.rotation.x = -Math.PI/2; ground.position.set(10,0,0); venueCork.add(ground);
+  var grid = new THREE.GridHelper(200, 100, 0x38434f, 0x232c36);
+  grid.position.set(10, 0.01, 0); venueCork.add(grid);
+
+  var P = MOGUL_PROFILE, pts = [new THREE.Vector2(-4.0, 0)];
+  for (var i=1;i<=24;i++){ var x = -4.0 + 4.0*i/24; pts.push(new THREE.Vector2(x, P.heightAt(x))); }
+  pts.push(new THREE.Vector2(0,0));
+  var ramp = new THREE.Mesh(
+    new THREE.ExtrudeGeometry(new THREE.Shape(pts), {depth:2.6, bevelEnabled:false}), mat(0x46535f));
+  ramp.position.z = -1.3; venueCork.add(ramp);
+
+  var g = new THREE.BufferGeometry().setFromPoints([
+    new V3(0,1.8,-1.6), new V3(0,1.8,1.6), new V3(0,1.8,0), new V3(0,1.8+5.5,0)]);
+  venueCork.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({color:0xe08a2e})));
+})();
+
+/* ---------- 会場B：ウォータージャンプ宮城 ---------- */
+var venueBf = new THREE.Group(); scene.add(venueBf);
+(function(){
+  var P = MIZUHO_PROFILE;
+  var COL = {
+    mat:0xe8ecef,      // 滑走面の白マット
+    green:0x7ec225,    // ライムグリーンの側壁
+    ply:0xc9a173,      // キッカーのベニヤ
+    pipe:0x4a5158,     // 単管足場
+    deck:0x9aa0a0,     // 風化した木デッキ
+    coping:0xeef2f2,   // プール縁
+    fence:0xb9c2c6,
+    pergola:0x7a5a3c,
+    tree1:0x1d4222, tree2:0x27522a, tree3:0x143017,
+    grass:0x3a5c2c
+  };
+
+  // ---- 空（グラデーション球 + 積雲）----
+  var skyTex = canvasTex(8, 256, function(cx,w,h){
+    var g = cx.createLinearGradient(0,0,0,h);
+    g.addColorStop(0.00, '#1d5fb8');
+    g.addColorStop(0.45, '#4f92dc');
+    g.addColorStop(0.78, '#9cc7ee');
+    g.addColorStop(1.00, '#cfe2f2');
+    cx.fillStyle = g; cx.fillRect(0,0,w,h);
+  });
+  var sky = new THREE.Mesh(new THREE.SphereGeometry(420, 24, 18),
+    new THREE.MeshBasicMaterial({map:skyTex, side:THREE.BackSide, fog:false}));
+  venueBf.add(sky);
+
+  var cloudMat = new THREE.MeshBasicMaterial({color:0xffffff, fog:false, transparent:true, opacity:0.92});
+  var rnd = rng(20260816);
+  for (var c=0;c<14;c++){
+    var cg = new THREE.Group();
+    var puffs = 3 + Math.floor(rnd()*3);
+    for (var p=0;p<puffs;p++){
+      var r = 9 + rnd()*11;
+      var s = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), cloudMat);
+      s.position.set((rnd()-0.5)*38, (rnd()-0.5)*7, (rnd()-0.5)*14);
+      s.scale.y = 0.55; cg.add(s);
+    }
+    var ang = rnd()*Math.PI*2, dist = 170 + rnd()*130;
+    cg.position.set(Math.cos(ang)*dist, 48 + rnd()*46, Math.sin(ang)*dist);
+    venueBf.add(cg);
+  }
+
+  // ---- 地面（草）----
+  var grass = new THREE.Mesh(new THREE.PlaneGeometry(500,500), mat(COL.grass));
+  grass.rotation.x = -Math.PI/2; grass.position.set(0,-0.05,0); venueBf.add(grass);
+
+  // ---- プール（明るい緑〜ターコイズ＋エアレーションの白い泡）----
+  // タイル境界が出ないよう、はみ出した泡は反対側にも描いて継ぎ目を消す
+  var poolTex = canvasTex(256,256, function(cx,w,h){
+    cx.fillStyle = '#128f65'; cx.fillRect(0,0,w,h);
+    var r = rng(7);
+    function blob(x,y,rr,ry,rot){
+      for (var dx=-1;dx<=1;dx++) for (var dy=-1;dy<=1;dy++){
+        cx.beginPath(); cx.ellipse(x+dx*w, y+dy*h, rr, ry, rot, 0, 6.29); cx.fill();
+      }
+    }
+    cx.fillStyle = '#e6f7f0'; cx.globalAlpha = 0.15;
+    for (var i=0;i<200;i++) blob(r()*w, r()*h, 2+r()*10, (2+r()*10)*0.55, r()*3.14);
+    cx.globalAlpha = 0.08;
+    for (var j=0;j<34;j++){ var rr2 = 14+r()*26; blob(r()*w, r()*h, rr2, rr2*0.42, 0); }
+    cx.globalAlpha = 0.06; cx.fillStyle = '#065c40';
+    for (var k=0;k<26;k++){ var rr3 = 16+r()*30; blob(r()*w, r()*h, rr3, rr3*0.5, 0); }
+  }, 3, 2.6);
+  var pool = new THREE.Mesh(new THREE.PlaneGeometry(22,19),
+    new THREE.MeshLambertMaterial({map:poolTex}));
+  pool.rotation.x = -Math.PI/2; pool.position.set(11, 0.02, -0.5); venueBf.add(pool);
+  // 白いコーピング
+  [[11,0.06,9.3,22.8,0.8],[11,0.06,-10.3,22.8,0.8]].forEach(function(a){
+    var m = boxMesh(a[3],0.12,a[4], COL.coping); m.position.set(a[0],a[1],a[2]); venueBf.add(m);
+  });
+  [[22.6,0.06,-0.5,0.8,20.6],[-0.4,0.06,-0.5,0.8,20.6]].forEach(function(a){
+    var m = boxMesh(a[3],0.12,a[4], COL.coping); m.position.set(a[0],a[1],a[2]); venueBf.add(m);
+  });
+
+  // ---- 手前のデッキ（灰色に風化した板張り）----
+  var deckTex = canvasTex(256,256, function(cx,w,h){
+    cx.fillStyle='#9aa0a0'; cx.fillRect(0,0,w,h);
+    var r = rng(31);
+    for (var i=0;i<16;i++){
+      var y = i*(h/16);
+      cx.fillStyle = 'rgba(120,126,126,'+(0.5+r()*0.4)+')';
+      cx.fillRect(0, y, w, 2);
+      cx.fillStyle = 'rgba(175,180,178,'+(0.10+r()*0.16)+')';
+      cx.fillRect(0, y+3, w, (h/16)-5);
+    }
+  }, 6, 6);
+  var deck = new THREE.Mesh(new THREE.PlaneGeometry(40,10),
+    new THREE.MeshLambertMaterial({map:deckTex}));
+  deck.rotation.x = -Math.PI/2; deck.position.set(6, 0.30, 15.0); venueBf.add(deck);
+  var deckEdge = boxMesh(40,0.34,0.3, 0x6f7574); deckEdge.position.set(6,0.15,10.0); venueBf.add(deckEdge);
+
+  // ---- インラン（長い直線の助走路）----
+  // 滑走面＝白〜シルバーのマットが横方向に並ぶ／両サイドにライムグリーンの壁
+  var matTex = canvasTex(128,128, function(cx,w,h){
+    cx.fillStyle='#e9edee'; cx.fillRect(0,0,w,h);
+    for (var i=0;i<10;i++){
+      cx.fillStyle = i%2 ? '#dfe4e5' : '#f3f6f6';
+      cx.fillRect(0, i*(h/10), w, h/10);
+      cx.fillStyle='rgba(150,158,160,0.55)'; cx.fillRect(0, i*(h/10), w, 1.4);
+    }
+  }, 1, 26);
+  var W = 3.2;                       // 滑走面の幅
+  var inrunPts = [], sideL = [], sideR = [];
+  var X0 = -40, X1 = -4.6, NSEG = 60;
+  for (var i=0;i<=NSEG;i++){
+    var x = X0 + (X1-X0)*i/NSEG;
+    inrunPts.push([x, P.heightAt(x)]);
+  }
+  // 滑走面（帯）
+  (function(){
+    var g = new THREE.BufferGeometry(), pos=[], uv=[];
+    for (var i=0;i<NSEG;i++){
+      var a=inrunPts[i], b=inrunPts[i+1], v0=i/NSEG, v1=(i+1)/NSEG;
+      pos.push(a[0],a[1], W/2,  b[0],b[1], W/2,  b[0],b[1],-W/2);
+      pos.push(a[0],a[1], W/2,  b[0],b[1],-W/2,  a[0],a[1],-W/2);
+      uv.push(0,v0, 0,v1, 1,v1,  0,v0, 1,v1, 1,v0);
+    }
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv,2));
+    g.computeVertexNormals();
+    venueBf.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({map:matTex, side:THREE.DoubleSide})));
+  })();
+  // ライムグリーンの側壁
+  [1,-1].forEach(function(sgn){
+    var g = new THREE.BufferGeometry(), pos=[], HW=0.75;
+    for (var i=0;i<NSEG;i++){
+      var a=inrunPts[i], b=inrunPts[i+1], z=sgn*(W/2);
+      pos.push(a[0],a[1],z,  b[0],b[1],z,  b[0],b[1]+HW,z);
+      pos.push(a[0],a[1],z,  b[0],b[1]+HW,z, a[0],a[1]+HW,z);
+      var z2 = sgn*(W/2+0.16);
+      pos.push(a[0],a[1]+HW,z,  b[0],b[1]+HW,z,  b[0],b[1]+HW,z2);
+      pos.push(a[0],a[1]+HW,z,  b[0],b[1]+HW,z2, a[0],a[1]+HW,z2);
+      pos.push(a[0],a[1],z2,  b[0],b[1],z2,  b[0],b[1]+HW,z2);
+      pos.push(a[0],a[1],z2,  b[0],b[1]+HW,z2, a[0],a[1]+HW,z2);
+    }
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+    g.computeVertexNormals();
+    venueBf.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({color:COL.green, side:THREE.DoubleSide})));
+  });
+  // 鉄パイプの単管足場
+  (function(){
+    var pm = mat(COL.pipe);
+    for (var x=-38; x<=-5.0; x+=2.6){
+      var y = P.heightAt(x);
+      [1,-1].forEach(function(sgn){
+        var h = Math.max(y-0.1, 0.2);
+        var leg = new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.045,h,6), pm);
+        leg.position.set(x, h/2, sgn*(W/2+0.1)); venueBf.add(leg);
+      });
+      var cross = new THREE.Mesh(new THREE.CylinderGeometry(0.038,0.038,W+0.4,6), pm);
+      cross.rotation.x = Math.PI/2; cross.position.set(x, Math.max(y*0.45,0.4), 0); venueBf.add(cross);
+      if (y > 2.2){
+        var c2 = new THREE.Mesh(new THREE.CylinderGeometry(0.038,0.038,W+0.4,6), pm);
+        c2.rotation.x = Math.PI/2; c2.position.set(x, Math.max(y*0.78,0.9), 0); venueBf.add(c2);
+      }
+    }
+    // 斜め筋交い
+    for (var x2=-37; x2<=-6.5; x2+=5.2){
+      var y1 = P.heightAt(x2), y2 = P.heightAt(x2+5.2);
+      var len = Math.hypot(5.2, y1-y2);
+      [1,-1].forEach(function(sgn){
+        var br = new THREE.Mesh(new THREE.CylinderGeometry(0.032,0.032,len,5), pm);
+        br.position.set(x2+2.6, (y1+y2)/2*0.55, sgn*(W/2+0.1));
+        br.rotation.z = Math.atan2(5.2, (y1-y2)*0.55) - Math.PI/2;
+        venueBf.add(br);
+      });
+    }
+  })();
+
+  // ---- キッカー（インランとは別体・側面はベニヤ／滑走面は白マット・リップ約47°）----
+  (function(){
+    var pts = [], KX0 = -4.6;
+    for (var i=0;i<=26;i++){
+      var x = KX0 + (0-KX0)*i/26;
+      pts.push(new THREE.Vector2(x, P.heightAt(x)));
+    }
+    pts.push(new THREE.Vector2(0, 0.2)); pts.push(new THREE.Vector2(KX0, 0.2));
+    var body = new THREE.Mesh(
+      new THREE.ExtrudeGeometry(new THREE.Shape(pts), {depth:W+0.3, bevelEnabled:false}), mat(COL.ply));
+    body.position.z = -(W+0.3)/2; venueBf.add(body);
+    // 白い滑走面
+    var g = new THREE.BufferGeometry(), pos=[], uv=[], N=26;
+    for (var i2=0;i2<N;i2++){
+      var xa = KX0 + (0-KX0)*i2/N, xb = KX0 + (0-KX0)*(i2+1)/N;
+      var ya = P.heightAt(xa)+0.03, yb = P.heightAt(xb)+0.03;
+      var v0=i2/N, v1=(i2+1)/N;
+      pos.push(xa,ya,W/2,  xb,yb,W/2,  xb,yb,-W/2);
+      pos.push(xa,ya,W/2,  xb,yb,-W/2, xa,ya,-W/2);
+      uv.push(0,v0, 0,v1, 1,v1,  0,v0, 1,v1, 1,v0);
+    }
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv,2));
+    g.computeVertexNormals();
+    venueBf.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({map:matTex, side:THREE.DoubleSide})));
+  })();
+
+  // ---- 奥：金属の柵 ----
+  (function(){
+    var fm = mat(COL.fence);
+    var rail1 = boxMesh(23,0.06,0.06, COL.fence); rail1.position.set(11,1.05,-10.6); venueBf.add(rail1);
+    var rail2 = boxMesh(23,0.06,0.06, COL.fence); rail2.position.set(11,0.60,-10.6); venueBf.add(rail2);
+    for (var x=-0.5;x<=22.5;x+=1.9){
+      var p = new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,1.1,6), fm);
+      p.position.set(x,0.55,-10.6); venueBf.add(p);
+    }
+  })();
+
+  // ---- 左手の木製パーゴラ（日除け）----
+  (function(){
+    var pg = new THREE.Group();
+    var pm = mat(COL.pergola);
+    for (var i=0;i<4;i++){
+      for (var j=0;j<2;j++){
+        var col = boxMesh(0.16,2.5,0.16, 0x8d8377);
+        col.position.set(-3 + i*2.6, 1.25, -1.4 + j*2.8); pg.add(col);
+      }
+    }
+    for (var b=0;b<2;b++){
+      var beam = boxMesh(9.0,0.14,0.16, COL.pergola);
+      beam.position.set(0.9, 2.55, -1.4 + b*2.8); pg.add(beam);
+    }
+    for (var s=0;s<20;s++){
+      var slat = boxMesh(0.10,0.10,3.2, COL.pergola);
+      slat.position.set(-3.4 + s*0.46, 2.66, 0); pg.add(slat);
+    }
+    pg.position.set(3.0, 0, -14.5); venueBf.add(pg);
+  })();
+
+  // ---- 奥の森（針葉樹＋広葉樹）----
+  (function(){
+    var r = rng(1234);
+    var trunkM = mat(0x4a3a2a);
+    var cM = [mat(COL.tree1), mat(COL.tree2), mat(COL.tree3)];
+    for (var i=0;i<130;i++){
+      var ang = -0.15 + r()*3.45;                     // 主に奥〜左右
+      var dist = 22 + r()*58;
+      var x = 8 + Math.cos(ang)*dist*0.9;
+      var z = -14 - Math.abs(Math.sin(ang))*dist;
+      if (r() < 0.45){
+        var h = 7 + r()*13;                            // 針葉樹
+        var t = new THREE.Mesh(new THREE.ConeGeometry(1.1 + r()*1.4, h, 7), cM[(r()*3)|0]);
+        t.position.set(x, h/2, z); venueBf.add(t);
+      } else {
+        var rr = 2.4 + r()*3.4;                        // 広葉樹
+        var t2 = new THREE.Mesh(new THREE.SphereGeometry(rr, 7, 6), cM[(r()*3)|0]);
+        t2.position.set(x, rr*0.95 + 1.6, z); t2.scale.y = 0.85; venueBf.add(t2);
+        var tr = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.3,2.4,5), trunkM);
+        tr.position.set(x, 1.2, z); venueBf.add(tr);
+      }
+    }
+  })();
+
+  // ---- TAKEOFFライン ----
+  var g2 = new THREE.BufferGeometry().setFromPoints([
+    new V3(0,P.lipH,-1.9), new V3(0,P.lipH,1.9), new V3(0,P.lipH,0), new V3(0,P.lipH+6.0,0)]);
+  venueBf.add(new THREE.LineSegments(g2, new THREE.LineBasicMaterial({color:0xe08a2e})));
+})();
+
+/* ---------- スキーヤー（ModelDefinition から構築） ---------- */
+var root = new THREE.Group(); scene.add(root);
+var jointObj = { pelvis: root };
+MODEL.joints.forEach(function(j){
+  var g = new THREE.Group();
+  g.position.fromArray(j.offset);
+  jointObj[j.parent].add(g);
+  jointObj[j.name] = g;
+});
+MODEL.bodies.forEach(function(b){
+  var m;
+  if (b.shape === "sphere") m = new THREE.Mesh(new THREE.SphereGeometry(b.dim[0],12,10), mat(b.color));
+  else m = boxMesh(b.dim[0], b.dim[1], b.dim[2], b.color);
+  m.position.fromArray(b.com);
+  if (b.roll) m.rotation.z = b.roll;
+  jointObj[b.joint].add(m);
+});
+
+/* ---------- 軌道／高さの手がかり ---------- */
+var trajLine = new THREE.Line(new THREE.BufferGeometry(),
+  new THREE.LineDashedMaterial({color:0x8fa2b3, dashSize:0.5, gapSize:0.34}));
+scene.add(trajLine);
+var dropLine = new THREE.Line(new THREE.BufferGeometry(),
+  new THREE.LineDashedMaterial({color:0x54626f, dashSize:0.25, gapSize:0.2}));
+scene.add(dropLine);
+var shadowRing = new THREE.Mesh(new THREE.CircleGeometry(0.5,24),
+  new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:0.30}));
+shadowRing.rotation.x = -Math.PI/2; scene.add(shadowRing);
+
+/* ---------- 矢印／ラベル ---------- */
+function makeArrow(color, len, radius){
+  var g = new THREE.Group();
+  var m = new THREE.MeshBasicMaterial({color:color});
+  var headLen = len*0.21;
+  var shaft = new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,len-headLen,12), m);
+  shaft.position.y = (len-headLen)/2;
+  var head = new THREE.Mesh(new THREE.ConeGeometry(radius*2.9, headLen, 14), m);
+  head.position.y = len - headLen/2;
+  g.add(shaft); g.add(head);
+  g.userData.len = len;
+  g.setDir = function(dir){ this.quaternion.setFromUnitVectors(AX_Y, dir); };
+  return g;
+}
+function makeLabel(text, color, scale){
+  var cv = document.createElement('canvas'); cv.width=128; cv.height=64;
+  var cx = cv.getContext('2d');
+  cx.fillStyle = color; cx.font = 'bold 42px sans-serif';
+  cx.textAlign='center'; cx.textBaseline='middle';
+  cx.fillText(text, 64, 32);
+  var sp = new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv), transparent:true, depthTest:false}));
+  sp.scale.set(scale||0.72, (scale||0.72)*0.5, 1);
+  scene.add(sp);
+  return sp;
+}
+var H_LEN = 2.7;
+var arrowH = makeArrow(0xe08a2e, H_LEN, 0.055); scene.add(arrowH);
+var arrowL = makeArrow(0x38d6c8, 2.1, 0.040); scene.add(arrowL);
+var arrowW = makeArrow(0xc07ae0, 2.0, 0.038); scene.add(arrowW);
+var axisT  = makeArrow(0xe05a5a, 1.15, 0.030); scene.add(axisT);
+var axisAP = makeArrow(0x5aa9e6, 1.15, 0.030); scene.add(axisAP);
+var zLine  = new THREE.Line(new THREE.BufferGeometry(),
+  new THREE.LineBasicMaterial({color:0xdfe6ec}));
+scene.add(zLine);
+
+var labH = makeLabel('H','#e08a2e'), labL = makeLabel('L','#38d6c8'),
+    labZ = makeLabel('Z','#dfe6ec',0.55), labW = makeLabel('ω','#c07ae0',0.62),
+    labT = makeLabel('T','#e05a5a',0.5), labAP = makeLabel('AP','#5aa9e6',0.58);
+
+
+/* =====================================================================
+   7. UI + 状態
+   ===================================================================== */
+var params = { trick:"cork", tendency:0.72, exit:0.66, shape:0.12, preset:"A", verify:false };
+var view   = { showLTAP:true, showOmega:false };
+var state  = { t:0, playing:false, speed:0.40 };
+
+var seq = null, met = null;
+
+function rebuild(keepT){
+  var prevRel = null;
+  if (keepT && seq){
+    prevRel = (state.t - seq.timeRange.start) / (seq.timeRange.end - seq.timeRange.start);
+  }
+  seq = generateSequence(params.trick, params);
+  met = analyze(seq);
+  var TR = seq.timeRange;
+  state.t = prevRel === null ? TR.start : clamp(TR.start + (TR.end-TR.start)*prevRel, TR.start, TR.end);
+
+  // 軌道線
+  var p = [];
+  for (var i=0;i<seq.frames.length;i++){
+    if (seq.frames[i].t >= 0 && seq.frames[i].t <= TR.landing) p.push(new V3().fromArray(seq.frames[i].rootPosition));
+  }
+  trajLine.geometry.dispose();
+  trajLine.geometry = new THREE.BufferGeometry().setFromPoints(p);
+  trajLine.computeLineDistances();
+
+  updateHypList();
+  update();
+}
+
+function frameIndexAt(t){
+  var fr = seq.frames, lo = 0, hi = fr.length-1;
+  if (t <= fr[0].t) return 0;
+  if (t >= fr[hi].t) return hi;
+  while (hi-lo > 1){ var m = (lo+hi)>>1; if (fr[m].t <= t) lo = m; else hi = m; }
+  return (t - fr[lo].t) < (fr[hi].t - t) ? lo : hi;
+}
+
+var badge   = document.getElementById('phaseBadge');
+var elTilt  = document.getElementById('roTilt');
+var elH     = document.getElementById('roH');
+var elTLab  = document.getElementById('tlabel');
+var elScrub = document.getElementById('scrub');
+
+var PHASE_JP = { APPROACH:"APPROACH", RAMP:"RAMP（台の中）", FLIGHT:"FLIGHT（空中）", LANDING:"LANDING" };
+
+function update(){
+  var idx = frameIndexAt(state.t);
+  var f = seq.frames[idx], d = met[idx];
+  var com = new V3().fromArray(f.rootPosition);
+  var q   = new QT().fromArray(f.rootQuaternion);
+
+  root.position.copy(com);
+  root.quaternion.copy(q);
+  JOINT_NAMES.forEach(function(n){ jointObj[n].quaternion.copy(f.segments[n]); });
+
+  var airborne = f.contactState === "aerial";
+  var groundY  = params.trick === "bf" ? 0.02 : 0;
+  var feetY = Math.max(com.y - MODEL.standingRootHeight, groundY);
+  dropLine.geometry.setFromPoints([new V3(com.x, feetY, com.z), new V3(com.x, groundY, com.z)]);
+  dropLine.computeLineDistances();
+  shadowRing.position.set(com.x, groundY + 0.03, com.z);
+  shadowRing.scale.setScalar(1 + Math.max(0, com.y - MODEL.standingRootHeight)*0.11);
+
+  // --- H：離地後のみ・ワールド固定・向きだけ ---
+  arrowH.visible = labH.visible = airborne;
+  if (airborne){
+    arrowH.position.copy(com); arrowH.setDir(d.Hhat);
+    labH.position.copy(com).addScaledVector(d.Hhat, H_LEN + 0.34);
+  }
+  // --- L：常時 ---
+  arrowL.position.copy(com); arrowL.setDir(d.Lhat);
+  labL.position.copy(com).addScaledVector(d.Lhat, 2.1 + 0.3);
+  // --- Z：ワールド鉛直の基準 ---
+  zLine.geometry.setFromPoints([com.clone().setY(com.y-1.9), com.clone().setY(com.y+2.4)]);
+  labZ.position.copy(com).setY(com.y + 2.62);
+  // --- Advanced ---
+  var showAxes = view.showLTAP && document.getElementById('adv').classList.contains('show');
+  axisT.visible = axisAP.visible = labT.visible = labAP.visible = showAxes;
+  if (showAxes){
+    axisT.position.copy(com);  axisT.setDir(d.That);
+    axisAP.position.copy(com); axisAP.setDir(d.APhat);
+    labT.position.copy(com).addScaledVector(d.That, 1.4);
+    labAP.position.copy(com).addScaledVector(d.APhat, 1.42);
+  }
+  var showW = view.showOmega && document.getElementById('adv').classList.contains('show') && d.omegaMag > 0.15;
+  arrowW.visible = labW.visible = showW;
+  if (showW){
+    var wd = d.omegaWorld.clone().normalize();
+    arrowW.position.copy(com); arrowW.setDir(wd);
+    labW.position.copy(com).addScaledVector(wd, 2.0 + 0.3);
+  }
+
+  // --- 読み取り値 ---
+  elTilt.textContent = airborne ? (d.tilt*RAD).toFixed(1) + '°' : '—';
+  elH.textContent    = airborne ? 'ワールド固定' : '離地前';
+
+  // --- カメラ追従（ユーザーの回転・ズームは保持）---
+  var off = camera.position.clone().sub(controls.target);
+  followTarget.copy(com);
+  controls.target.copy(followTarget);
+  camera.position.copy(followTarget).add(off);
+
+  // --- HUD / ロック ---
+  badge.textContent = PHASE_JP[f.phase];
+  badge.style.color = airborne ? '#e08a2e' : '#5aa9e6';
+  elTLab.textContent = 't = ' + (f.t>=0?'+':'') + f.t.toFixed(2) + 's';
+  document.getElementById('lockBar').classList.toggle('show', airborne);
+  ['ctrlTend','ctrlExit'].forEach(function(id){
+    document.getElementById(id).classList.toggle('locked', airborne);
+  });
+  document.getElementById('tend').disabled = airborne;
+  document.getElementById('exit').disabled = airborne;
+
+  var TR = seq.timeRange;
+  elScrub.value = Math.round((f.t - TR.start)/(TR.end - TR.start)*1000);
+}
+
+function updateHypList(){
+  var HYP = HYPOTHESIS[params.trick];
+  var keys = ["h0InclinationDeg","somersaultTurns","twistTurns","tiltMaxDeg"];
+  var names = { h0InclinationDeg:"H0の水平からの傾き [deg]", somersaultTurns:"Hまわりの周回 φ [turn]",
+                twistTurns:"長軸まわり ψ [turn]", tiltMaxDeg:"tilt ピーク [deg]" };
+  var html = '<dt style="color:#8b98a5">' + HYP.label + ' のパラメータ</dt>';
+  keys.forEach(function(k){
+    var o = HYP[k];
+    html += '<dt>' + names[k] + (o.hyp ? ' <span style="color:#b58a4a">［仮説］</span>' : ' <span style="color:#5c6a76">［確立寄り］</span>') + '</dt>';
+    html += '<dd>' + o.value + '　<span style="color:#6b7885">' + o.note + '</span></dd>';
+  });
+  html += '<dt style="color:#8b98a5;margin-top:7px">数値の比率（contact ○% / aerial ○%）は測定していないため表示しません。</dt>';
+  document.getElementById('hypList').innerHTML = html;
+}
+
+/* ---- 会場・カメラの切り替え ---- */
+function applyVenue(){
+  var V = VENUES[params.trick];
+  venueCork.visible = params.trick === "cork";
+  venueBf.visible   = params.trick === "bf";
+  scene.background = new THREE.Color(V.bg);
+  scene.fog = new THREE.Fog(V.fog[0], V.fog[1], V.fog[2]);
+  hemi.color.set(params.trick === "bf" ? 0xd6e8fa : 0xcfe3f5);
+  hemi.groundColor.set(params.trick === "bf" ? 0x33502c : 0x2b3440);
+  hemi.intensity = params.trick === "bf" ? 0.88 : 0.95;
+  keyLight.intensity = params.trick === "bf" ? 0.80 : 0.75;
+
+  document.getElementById('titleMain').textContent =
+    params.trick === "cork" ? "Off Axis 720（Cork 720）" : "Back Full";
+  document.getElementById('titleSub').textContent =
+    (params.trick === "cork" ? "Off Axis Jumps / 7op ・ モーグルキッカー"
+                             : "Inverted Jumps / bF ・ ウォータージャンプ宮城");
+}
+function setView(name){
+  var o = VENUES[params.trick].camPresets[name];
+  if (name === "H"){
+    var d = met[frameIndexAt(state.t)].Hhat.clone();
+    var dist = params.trick === "bf" ? 13 : 10;
+    camera.position.copy(followTarget).addScaledVector(d, dist).add(new V3(0, 0.6, 0));
+  } else {
+    camera.position.set(followTarget.x+o[0], followTarget.y+o[1], followTarget.z+o[2]);
+  }
+  controls.target.copy(followTarget);
+  controls.update();
+}
+
+/* ---- イベント ---- */
+Array.prototype.forEach.call(document.querySelectorAll('.trickBtn'), function(b){
+  b.addEventListener('click', function(){
+    if (params.trick === b.dataset.trick) return;
+    params.trick = b.dataset.trick;
+    Array.prototype.forEach.call(document.querySelectorAll('.trickBtn'), function(x){
+      x.classList.toggle('on', x.dataset.trick === params.trick);
+    });
+    // 技ごとの初期値：bFはレイアウト（伸身）、Corkは少し縮める
+    params.shape = params.trick === "bf" ? 0.04 : 0.12;
+    document.getElementById('shape').value = Math.round(params.shape*100);
+    setPlaying(false);
+    applyVenue();
+    rebuild(false);
+    setView('diag');
+  });
+});
+
+document.getElementById('tend').addEventListener('input', function(e){
+  params.tendency = (+e.target.value)/100; rebuild(true);
+});
+document.getElementById('exit').addEventListener('input', function(e){
+  params.exit = (+e.target.value)/100; rebuild(true);
+});
+document.getElementById('shape').addEventListener('input', function(e){
+  params.shape = (+e.target.value)/100; rebuild(true);
+});
+Array.prototype.forEach.call(document.querySelectorAll('#presetWrap button'), function(b){
+  b.addEventListener('click', function(){
+    params.preset = b.dataset.preset;
+    Array.prototype.forEach.call(document.querySelectorAll('#presetWrap button'), function(x){
+      x.classList.toggle('on', x.dataset.preset === params.preset);
+    });
+    document.getElementById('presetDesc').textContent = TILT_PRESETS[params.preset].label;
+    rebuild(true);
+  });
+});
+
+var playBtn = document.getElementById('playBtn');
+function setPlaying(p){
+  state.playing = p;
+  playBtn.textContent = p ? '❚❚ 停止' : '▶ 再生';
+}
+playBtn.addEventListener('click', function(){
+  if (!state.playing && state.t >= seq.timeRange.end - 0.001) state.t = seq.timeRange.start;
+  setPlaying(!state.playing);
+});
+document.getElementById('resetBtn').addEventListener('click', function(){
+  state.t = seq.timeRange.start; setPlaying(false); update();
+});
+var SPEEDS = [0.25, 0.40, 0.70, 1.00], spdIdx = 1;
+document.getElementById('spdBtn').addEventListener('click', function(){
+  spdIdx = (spdIdx+1) % SPEEDS.length; state.speed = SPEEDS[spdIdx];
+  this.textContent = '×' + state.speed.toFixed(2).replace(/0$/,'');
+});
+elScrub.addEventListener('input', function(e){
+  setPlaying(false);
+  var TR = seq.timeRange;
+  state.t = TR.start + (TR.end - TR.start) * (+e.target.value)/1000;
+  update();
+});
+
+document.getElementById('vSide').addEventListener('click', function(){ setView('side'); });
+document.getElementById('vDiag').addEventListener('click', function(){ setView('diag'); });
+document.getElementById('vBack').addEventListener('click', function(){ setView('back'); });
+document.getElementById('vH').addEventListener('click',    function(){ setView('H'); });
+
+var advBtn = document.getElementById('advBtn'), advBox = document.getElementById('adv');
+advBtn.addEventListener('click', function(){
+  var on = !advBox.classList.contains('show');
+  advBox.classList.toggle('show', on);
+  advBtn.classList.toggle('on', on);
+  update();
+});
+document.getElementById('cbLTAP').addEventListener('change', function(e){ view.showLTAP = e.target.checked; update(); });
+document.getElementById('cbOmega').addEventListener('change', function(e){ view.showOmega = e.target.checked; update(); });
+document.getElementById('cbVerify').addEventListener('change', function(e){
+  params.verify = e.target.checked; rebuild(true);
+});
+
+function resize(){
+  var w = stage.clientWidth, h = stage.clientHeight;
+  if (!w || !h) return;
+  camera.aspect = w/h; camera.updateProjectionMatrix();
+  renderer.setSize(w, h, false);
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', function(){ setTimeout(resize, 200); });
+
+var last = performance.now();
+function loop(now){
+  var dt = Math.min((now-last)/1000, 0.05); last = now;
+  if (state.playing){
+    state.t += dt * state.speed;
+    if (state.t >= seq.timeRange.end){ state.t = seq.timeRange.end; setPlaying(false); }
+    update();
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+
+// ---- 起動 ----
+applyVenue();
+rebuild(false);
+resize();
+setView('diag');
+requestAnimationFrame(loop);
+
+// デバッグ／検証用（Phase 3のAnalyzer共有を見据えて外に出しておく）
+window.OA720 = {
+  convention: CONVENTION, hypothesis: HYPOTHESIS, model: MODEL,
+  getSequence: function(){ return seq; },
+  getMetrics : function(){ return met; },
+  getParams  : function(){ return params; },
+  setParams  : function(p){ Object.assign(params, p); applyVenue(); rebuild(true); },
+  seekTo     : function(t){ setPlaying(false); state.t = clamp(t, seq.timeRange.start, seq.timeRange.end); update(); },
+  setView    : setView,
+  renderNow  : function(){ controls.update(); renderer.render(scene, camera); },
+  maxTilt: function(){
+    var m = 0;
+    for (var i=0;i<met.length;i++){ if (seq.frames[i].contactState==="aerial") m = Math.max(m, met[i].tilt); }
+    return m*RAD;
+  }
+};
+})();
+</script>
+</body>
+</html>
