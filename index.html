@@ -386,29 +386,51 @@ Object.keys(SOMERSAULT_PROFILES).forEach(function(k){
 var ARM_PROFILES = {
   bf: {
     measured: true,
-    source: "バックフルツイスト（正面）.MP4 29.97fps 全150フレーム実測（2026-08-16）",
+    source: "バックフルツイスト（正面）.MP4 29.97fps 全150フレーム実測（2026-08-18 測り直し）",
+    domain: "tau",          // 正規化滞空時間で当てる（映像1.45s / アプリ1.65s のため秒は使えない）
+    accuracy: "目視実測、精度±15°。単一視点・身体が回転中のため、これ以上細かくは測れていない",
+    // ★左右非対称について
+    //   空中中盤で腕は左右非対称になる。片腕を体幹軸からほぼ真横まで外転し、
+    //   反対の腕は体幹軸の近くに寄せる。左右対称に大きく開くのは着水準備だけ。
+    //   この左右非対称は、実写で tilt を生成している動作。
+    //   ただし現行の運動学モデルでは腕は回転にフィードバックしないので、
+    //   非対称にしても tilt や ψ は変化しない（見た目のみ）。
+    //   Phase 2 の物理モードで、ここを関節角入力として接続する予定。
+    //   ※「腕がひねりを作っている」とは書かないこと。単一視点なので因果は断定できない。
+    //   ※非対称の窓（τ0.23〜0.41）が板の面の入れ替わり（τ≈0.40）の直前に来る、
+    //     という順序の一致までは言えるが、それ以上は言えない。
+    // 左右どちらの腕が外転側かは映像から確定できなかった。仮置きで左を外転側にしている。
+    sideAssignment: { abduct: "L", tuck: "R" },
     keys: [
-      // [T0からの秒, spread, swing, elbow]
-      [0.00, 0.22, 2.85, -0.12],   // 離地〜空中前半：頭上〜やや後方に保持
-      [0.45, 0.30, 2.85, -0.12],   // ここから開き始める
-      [0.85, 0.95, 2.80, -0.10],   // 大きく開く。ポールが張り出す
-      [1.30, 1.57, 2.74, -0.08],   // ほぼ水平に左右いっぱい
-      [1.45, 1.75, 2.70, -0.08]    // 着水直前：水平よりやや下
+      // [τ, 外転側spread, 体幹寄せ側spread, swing, elbow]
+      //   spread 0.10→体幹軸から約18° / 1.39→約80°（swing=2.85のとき）
+      [0.00, 0.22, 0.22, 2.85, -0.12],  // 空中前半：頭上〜体幹沿いに保持。ほぼ対称
+      [0.19, 0.24, 0.24, 2.85, -0.12],
+      [0.245,1.39, 0.10, 2.85, -0.12],  // 非対称局面へ：片腕をほぼ真横まで外転
+      [0.415,1.39, 0.10, 2.85, -0.12],  // 非対称を維持（実測 τ0.23〜0.41）
+      [0.55, 0.26, 0.26, 2.85, -0.12],  // 両腕とも体幹に寄り、対称に戻る
+      [0.60, 0.25, 0.25, 2.85, -0.12],
+      [0.80, 0.95, 0.95, 2.80, -0.10],  // 着水準備：ここで初めて左右対称に大きく開く
+      [1.00, 1.75, 1.75, 2.70, -0.08]   // 着水時：水平よりやや下
     ]
   },
   cork: {
     measured: false,
-    source: "未測定。bF の実測プロファイルを暫定流用。",
+    source: "未測定。bF の旧プロファイル（左右対称）を暫定流用。値は変更していない。",
+    domain: "sec",          // 旧実装のまま離地からの絶対秒。挙動を変えないため据え置き
+    accuracy: "未測定",
+    sideAssignment: { abduct: "L", tuck: "R" },
     keys: [
-      [0.00, 0.22, 2.85, -0.12],
-      [0.45, 0.30, 2.85, -0.12],
-      [0.85, 0.95, 2.80, -0.10],
-      [1.30, 1.57, 2.74, -0.08],
-      [1.45, 1.75, 2.70, -0.08]
+      // [秒, 外転側spread, 体幹寄せ側spread, swing, elbow]  ← 左右同値＝対称
+      [0.00, 0.22, 0.22, 2.85, -0.12],
+      [0.45, 0.30, 0.30, 2.85, -0.12],
+      [0.85, 0.95, 0.95, 2.80, -0.10],
+      [1.30, 1.57, 1.57, 2.74, -0.08],
+      [1.45, 1.75, 1.75, 2.70, -0.08]
     ]
   }
 };
-// キー間を区分線形で補間し、範囲外は端の値を保持する
+// キー間を smoothstep で補間し、範囲外は端の値を保持する（区間の境目でカクつかない）
 function makeKeyTrack(keys, col){
   var xs = keys.map(function(k){ return k[0]; });
   var ys = keys.map(function(k){ return k[col]; });
@@ -426,9 +448,20 @@ function makeKeyTrack(keys, col){
 }
 Object.keys(ARM_PROFILES).forEach(function(k){
   var a = ARM_PROFILES[k];
-  a.spread = makeKeyTrack(a.keys, 1);
-  a.swing  = makeKeyTrack(a.keys, 2);
-  a.elbow  = makeKeyTrack(a.keys, 3);
+  a.abduct = makeKeyTrack(a.keys, 1);   // 外転する側の肩の外転角 [rad]
+  a.tuck   = makeKeyTrack(a.keys, 2);   // 体幹に寄せる側 [rad]
+  a.swing  = makeKeyTrack(a.keys, 3);   // 肩の挙上 [rad]
+  a.elbow  = makeKeyTrack(a.keys, 4);   // 肘 [rad]
+  // Phase 2 の物理ソルバへ、そのまま関節角入力として渡せる形。
+  // x は domain に応じて τ（0..1）または離地からの秒。
+  a.anglesAt = function(x){
+    var ab = a.abduct(x), tu = a.tuck(x);
+    return {
+      spreadL: a.sideAssignment.abduct === "L" ? ab : tu,
+      spreadR: a.sideAssignment.abduct === "L" ? tu : ab,
+      swing: a.swing(x), elbow: a.elbow(x)
+    };
+  };
 });
 
 // 軸の作り方プリセット：tilt(t) の時間プロファイルだけを変える。
@@ -718,15 +751,16 @@ function generateSequence(trickKey, P){
     var u   = air ? clamp(t/0.30, 0, 1) : 0;
     var s   = P.shape;
 
-    var hipF, knF, armSwing, armSpread, elbow, spineZ;
+    var hipF, knF, armSwing, armSpreadL, armSpreadR, elbow, spineZ;
     if (!air){
       // 進入は深く沈み込んだまま → 最後の0.13秒で一気に伸び上がる。
       // 腕は胸の高さ・前方から頭上へ振り上げ、離地時に頭上へ到達する。
       hipF     = lerp(0.62, 0.10, rs);
       knF      = lerp(0.95, 0.12, rs);
-      armSwing = lerp(1.15, 2.85, rs);
-      armSpread= lerp(0.10, 0.22, rs);
-      elbow    = lerp(-0.85, -0.15, rs);
+      armSwing  = lerp(1.15, 2.85, rs);
+      armSpreadL= lerp(0.10, 0.22, rs);      // 台の中は左右対称
+      armSpreadR= armSpreadL;
+      elbow     = lerp(-0.85, -0.15, rs);
       spineZ   = -pitchAt(t)*0.35;
     } else {
       // 空中：伸ばす=レイアウト（正面映像どおり）／縮める=タック
@@ -734,10 +768,15 @@ function generateSequence(trickKey, P){
       var exH = lerp(0.10, 0.06, u), exK = lerp(0.12, 0.10, u);
       hipF     = lerp(exH, 1.55, s);
       knF      = lerp(exK, 1.95, s);
-      armSwing = lerp(armProfile.swing(t),  1.15, s);
-      armSpread= lerp(armProfile.spread(t), 0.16, s);
-      elbow    = lerp(armProfile.elbow(t), -1.05, s);
-      spineZ   = lerp(0, 0.30, s);
+      // 腕は ARM_PROFILE（実測）で左右独立に駆動する。
+      // domain が "tau" のプロファイルは正規化滞空時間で当てる（秒をそのまま使わない）。
+      var ax = armProfile.domain === "tau" ? clamp(t / T_LAND, 0, 1) : t;
+      var aa = armProfile.anglesAt(ax);
+      armSwing  = lerp(aa.swing,  1.15, s);
+      armSpreadL= lerp(aa.spreadL, 0.16, s);
+      armSpreadR= lerp(aa.spreadR, 0.16, s);
+      elbow     = lerp(aa.elbow, -1.05, s);
+      spineZ    = lerp(0, 0.30, s);
     }
     var ankle = knF*0.35 - hipF*0.35;
 
@@ -745,8 +784,8 @@ function generateSequence(trickKey, P){
     function set(name, rx, rz){ _e.set(rx||0, 0, rz||0, 'XYZ'); q[name] = new QT().setFromEuler(_e); }
     set("spine",     0,          spineZ);
     set("neck",      0,          air ? -0.10 : 0.12);
-    set("shoulderL", armSpread,  armSwing);
-    set("shoulderR", -armSpread, armSwing);
+    set("shoulderL",  armSpreadL, armSwing);
+    set("shoulderR", -armSpreadR, armSwing);
     set("elbowL",    0,          elbow);
     set("elbowR",    0,          elbow);
     set("hipL",      0,          hipF);
@@ -1593,6 +1632,17 @@ window.OA720 = {
   renderNow  : function(){ controls.update(); renderer.render(scene, camera); },
   somersaultProfiles: SOMERSAULT_PROFILES,
   armProfiles: ARM_PROFILES,
+  // 検証用：滞空進行率 tau における、左右の腕の「体幹軸からの角度」[deg]と左右差
+  armAnglesAt: function(tau){
+    var i = frameIndexAt(seq.timeRange.landing * clamp(tau,0,1));
+    var seg = seq.frames[i].segments;
+    function fromTrunkAxis(q){
+      var d = new V3(0,-1,0).applyQuaternion(q);      // 上腕が指す向き（体幹ローカル）
+      return Math.acos(clamp(d.dot(AX_Y),-1,1)) * RAD; // 体幹長軸(+Y)からの角度
+    }
+    var l = fromTrunkAxis(seg.shoulderL), r = fromTrunkAxis(seg.shoulderR);
+    return { leftDeg:+l.toFixed(2), rightDeg:+r.toFixed(2), asymmetryDeg:+Math.abs(l-r).toFixed(2) };
+  },
   // 検証用：滞空進行率 tau における、進行方向(+X)から見たスキーの面の向き。
   //   |faceX| ≒ 1 … 板の面がカメラを向く（幅広く見える）
   //   |faceX| ≒ 0 … エッジ向き（細く見える）
