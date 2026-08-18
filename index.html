@@ -170,6 +170,7 @@
       <button id="vSide">横</button>
       <button id="vDiag">斜め</button>
       <button id="vBack">後ろ</button>
+      <button id="vFront">正面</button>
       <button id="vH">H方向</button>
       <button id="advBtn">BODY AXES</button>
     </div>
@@ -367,6 +368,69 @@ Object.keys(SOMERSAULT_PROFILES).forEach(function(k){
   SOMERSAULT_PROFILES[k].eval = makeMonotoneSpline(SOMERSAULT_PROFILES[k].points);
 });
 
+/* ---------------------------------------------------------------------
+   空中の腕のプロファイル  ARM_PROFILE
+   ★実測（仮説ではない）。技ごとに差し替えられる形にしてある。
+     Back Full : バックフルツイスト（正面）.MP4 29.97fps 全150フレーム実測
+                 離地 frame 51 (t=1.668s) → 着水 frame 94-95 (t≈3.12s)
+                 進入の時点ですでに腕は頭上。沈み込み中も頭上のまま。
+                 空中前半は頭上〜やや後方に保持 → +0.45から左右に開き始め
+                 → +0.85でほぼ水平 → 着水直前は水平よりやや下。
+     時刻は離地(T0)からの「秒」。この映像の滞空(1.45s)とアプリの滞空(1.65s)は
+     スタート位置の違いによるもので、腕の動作自体は絶対時間で持つほうが移植しやすい。
+     最後のキーより後は保持する（＝着水まで左右いっぱいのまま）。
+   spread : 肩の外転（0=体側に沿う / 1.57=真横に水平 / >1.57=水平より下）
+   swing  : 肩の挙上（2.85≒頭上）
+   elbow  : 肘（レイアウト中はほぼ伸展）
+   --------------------------------------------------------------------- */
+var ARM_PROFILES = {
+  bf: {
+    measured: true,
+    source: "バックフルツイスト（正面）.MP4 29.97fps 全150フレーム実測（2026-08-16）",
+    keys: [
+      // [T0からの秒, spread, swing, elbow]
+      [0.00, 0.22, 2.85, -0.12],   // 離地〜空中前半：頭上〜やや後方に保持
+      [0.45, 0.30, 2.85, -0.12],   // ここから開き始める
+      [0.85, 0.95, 2.80, -0.10],   // 大きく開く。ポールが張り出す
+      [1.30, 1.57, 2.74, -0.08],   // ほぼ水平に左右いっぱい
+      [1.45, 1.75, 2.70, -0.08]    // 着水直前：水平よりやや下
+    ]
+  },
+  cork: {
+    measured: false,
+    source: "未測定。bF の実測プロファイルを暫定流用。",
+    keys: [
+      [0.00, 0.22, 2.85, -0.12],
+      [0.45, 0.30, 2.85, -0.12],
+      [0.85, 0.95, 2.80, -0.10],
+      [1.30, 1.57, 2.74, -0.08],
+      [1.45, 1.75, 2.70, -0.08]
+    ]
+  }
+};
+// キー間を区分線形で補間し、範囲外は端の値を保持する
+function makeKeyTrack(keys, col){
+  var xs = keys.map(function(k){ return k[0]; });
+  var ys = keys.map(function(k){ return k[col]; });
+  return function(t){
+    if (t <= xs[0]) return ys[0];
+    if (t >= xs[xs.length-1]) return ys[ys.length-1];
+    for (var i=0;i<xs.length-1;i++){
+      if (t <= xs[i+1]){
+        var u = (t - xs[i]) / (xs[i+1] - xs[i]);
+        return lerp(ys[i], ys[i+1], smooth(u));
+      }
+    }
+    return ys[ys.length-1];
+  };
+}
+Object.keys(ARM_PROFILES).forEach(function(k){
+  var a = ARM_PROFILES[k];
+  a.spread = makeKeyTrack(a.keys, 1);
+  a.swing  = makeKeyTrack(a.keys, 2);
+  a.elbow  = makeKeyTrack(a.keys, 3);
+});
+
 // 軸の作り方プリセット：tilt(t) の時間プロファイルだけを変える。
 // τ = flightPhaseNormalized (離地0 → 着地1)。戻り値は 0..1（tiltMax に対する比）。
 var TILT_PRESETS = {
@@ -492,7 +556,7 @@ var VENUES = {
     name:"モーグルキッカー",
     profile: MOGUL_PROFILE,
     vx: 10.0, vy0: 7.8, landingRootY: MODEL.standingRootHeight, tStart: -1.20, tTail: 0.28,
-    camPresets: { side:[0,0.6,8.0], diag:[-5.4,2.2,6.0], back:[-8.2,1.3,0.4] },
+    camPresets: { side:[0,0.6,8.0], diag:[-5.4,2.2,6.0], back:[-8.2,1.3,0.4], front:[6.2,1.0,0.4] },
     bg: 0x0d1117, fog: [0x0d1117, 28, 90]
   },
   bf: {
@@ -502,7 +566,7 @@ var VENUES = {
     // ★実測：滞空 1.65s（離地 frame56 t=1.802s → 着水 frame105 t=3.470s / 29.97fps）
     //   airtimeS があるとき vy0 はこれを満たすよう逆算される。
     vx: 8.0, airtimeS: 1.65, landingRootY: 1.00, tStart: -1.80, tTail: 0.30,
-    camPresets: { side:[1.0,0.7,8.6], diag:[-5.6,2.8,7.4], back:[-9.0,1.8,0.8] },
+    camPresets: { side:[1.0,0.7,8.6], diag:[-5.6,2.8,7.4], back:[-9.0,1.8,0.8], front:[6.8,1.1,0.5] },
     bg: 0x8fc4ee, fog: [0xa9cbe8, 90, 320]
   }
 };
@@ -644,6 +708,7 @@ function generateSequence(trickKey, P){
   var qTakeoff = rootQuatFrom(H0, basis, tiltAt(0), phi0, 0);
 
   // ---- セグメントのローカル姿勢 ----
+  var armProfile = ARM_PROFILES[trickKey] || ARM_PROFILES.bf;
   var _e = new THREE.Euler();
   function localQuats(t){
     var air = t > 0;
@@ -664,13 +729,14 @@ function generateSequence(trickKey, P){
       elbow    = lerp(-0.85, -0.15, rs);
       spineZ   = -pitchAt(t)*0.35;
     } else {
-      // 空中：伸ばす=レイアウト（bF映像どおり）／縮める=タック
+      // 空中：伸ばす=レイアウト（正面映像どおり）／縮める=タック
+      // 腕は ARM_PROFILE（実測）で駆動する。頭上保持 → +0.45から開く → 着水で左右いっぱい。
       var exH = lerp(0.10, 0.06, u), exK = lerp(0.12, 0.10, u);
       hipF     = lerp(exH, 1.55, s);
       knF      = lerp(exK, 1.95, s);
-      armSwing = lerp(lerp(2.85, 2.35, u), 1.15, s);
-      armSpread= lerp(lerp(0.22, 0.55, u), 0.16, s);
-      elbow    = lerp(-0.12, -1.05, s);
+      armSwing = lerp(armProfile.swing(t),  1.15, s);
+      armSpread= lerp(armProfile.spread(t), 0.16, s);
+      elbow    = lerp(armProfile.elbow(t), -1.05, s);
       spineZ   = lerp(0, 0.30, s);
     }
     var ankle = knF*0.35 - hipF*0.35;
@@ -1470,6 +1536,7 @@ elScrub.addEventListener('input', function(e){
 document.getElementById('vSide').addEventListener('click', function(){ setView('side'); });
 document.getElementById('vDiag').addEventListener('click', function(){ setView('diag'); });
 document.getElementById('vBack').addEventListener('click', function(){ setView('back'); });
+document.getElementById('vFront').addEventListener('click',function(){ setView('front'); });
 document.getElementById('vH').addEventListener('click',    function(){ setView('H'); });
 
 var advBtn = document.getElementById('advBtn'), advBox = document.getElementById('adv');
@@ -1525,6 +1592,33 @@ window.OA720 = {
   setView    : setView,
   renderNow  : function(){ controls.update(); renderer.render(scene, camera); },
   somersaultProfiles: SOMERSAULT_PROFILES,
+  armProfiles: ARM_PROFILES,
+  // 検証用：滞空進行率 tau における、進行方向(+X)から見たスキーの面の向き。
+  //   |faceX| ≒ 1 … 板の面がカメラを向く（幅広く見える）
+  //   |faceX| ≒ 0 … エッジ向き（細く見える）
+  //   side は左右差。0 なら左右のスキーは完全に平行。
+  skiFaceAt: function(tau){
+    var i = frameIndexAt(seq.timeRange.landing * clamp(tau,0,1));
+    var f = seq.frames[i];
+    var q = new QT().fromArray(f.rootQuaternion);
+    function chain(names){
+      var w = q.clone();
+      for (var k=0;k<names.length;k++) w.multiply(f.segments[names[k]]);
+      return w;
+    }
+    var qL = chain(["hipL","kneeL","ankleL"]);
+    var qR = chain(["hipR","kneeR","ankleR"]);
+    var nL = AX_Y.clone().applyQuaternion(qL);      // スキーの面の法線（ローカル+Y）
+    var nR = AX_Y.clone().applyQuaternion(qR);
+    var dL = AX_X.clone().applyQuaternion(qL);      // スキーの長手方向（ローカル+X）
+    var dR = AX_X.clone().applyQuaternion(qR);
+    return {
+      faceX: nL.x,                                   // +X（進行方向）から見た面の向き。符号反転＝面の入れ替わり
+      absFaceX: Math.abs(nL.x),
+      normalDeltaDeg: Math.acos(clamp(nL.dot(nR),-1,1))*RAD,   // 左右スキーの面のズレ
+      longDeltaDeg  : Math.acos(clamp(dL.dot(dR),-1,1))*RAD    // 左右スキーの向きのズレ
+    };
+  },
   // 検証用：滞空進行率 tau における宙返り角[deg]（離地を0とする累積）
   somersaultAngleAt: function(tau){
     var s = seq, TL = s.timeRange.landing;
