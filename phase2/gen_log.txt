@@ -1,0 +1,22 @@
+pole=0 tilt0=0  |H0|=84.13  som=384.4  twist=-5.9  tiltPeak=2.46
+pole=0 tilt0=2.5  |H0|=84.74  som=384.4  twist=90.2  tiltPeak=2.50
+pole=0 tilt0=5  |H0|=84.27  som=384.4  twist=155.1  tiltPeak=5.00
+pole=0 tilt0=7.5  |H0|=84.24  som=384.4  twist=237.4  tiltPeak=7.59
+pole=0 tilt0=10  |H0|=84.05  som=384.4  twist=334.0  tiltPeak=10.61
+pole=0 tilt0=12.5  |H0|=83.31  som=384.4  twist=488.4  tiltPeak=15.31
+pole=0 tilt0=15  |H0|=83.99  som=384.4  twist=620.1  tiltPeak=19.75
+pole=0 tilt0=17.5  |H0|=84.73  som=384.4  twist=727.8  tiltPeak=22.52
+pole=0 tilt0=20  |H0|=84.60  som=384.4  twist=805.2  tiltPeak=24.15
+pole=0.25 tilt0=0  |H0|=86.97  som=384.4  twist=-8.8  tiltPeak=3.36
+pole=0.25 tilt0=2.5  |H0|=88.66  som=384.4  twist=100.4  tiltPeak=4.46
+pole=0.25 tilt0=5  |H0|=88.50  som=384.4  twist=144.9  tiltPeak=5.00
+pole=0.25 tilt0=7.5  |H0|=87.70  som=384.4  twist=205.9  tiltPeak=7.50
+pole=0.25 tilt0=10  |H0|=87.89  som=384.4  twist=299.8  tiltPeak=10.71
+pole=0.25 tilt0=12.5  |H0|=86.53  som=384.4  twist=456.5  tiltPeak=15.52
+pole=0.25 tilt0=15  |H0|=87.34  som=384.4  twist=598.8  tiltPeak=20.63
+pole=0.25 tilt0=17.5  |H0|=88.41  som=384.4  twist=708.0  tiltPeak=23.55
+pole=0.25 tilt0=20  |H0|=88.33  som=384.4  twist=778.6  tiltPeak=24.99
+
+復元誤差(round-trip) 最大 = 2.96e-6 °
+（(tilt,phi,psi) から姿勢を復元したときの誤差。小さければ表だけで再現できる）
+
