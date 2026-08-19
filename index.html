@@ -405,8 +405,8 @@ var ARM_PROFILES = {
       // [τ, 外転側spread, 体幹寄せ側spread, swing, elbow]
       //   spread 0.10→体幹軸から約18° / 1.39→約80°（swing=2.85のとき）
       [0.00, 0.22, 0.22, 2.85, -0.12],  // 空中前半：頭上〜体幹沿いに保持。ほぼ対称
-      [0.19, 0.24, 0.24, 2.85, -0.12],
-      [0.245,1.39, 0.10, 2.85, -0.12],  // 非対称局面へ：片腕をほぼ真横まで外転
+      [0.16, 0.24, 0.24, 2.85, -0.12],  // 立ち上がり開始
+      [0.23, 1.39, 0.10, 2.85, -0.12],  // τ0.23 で立ち上がり完了＝非対称の窓の起点
       [0.415,1.39, 0.10, 2.85, -0.12],  // 非対称を維持（実測 τ0.23〜0.41）
       [0.55, 0.26, 0.26, 2.85, -0.12],  // 両腕とも体幹に寄り、対称に戻る
       [0.60, 0.25, 0.25, 2.85, -0.12],
@@ -1448,6 +1448,19 @@ function update(){
   elScrub.value = Math.round((f.t - TR.start)/(TR.end - TR.start)*1000);
 }
 
+function syncControls(){
+  document.getElementById('tend').value  = Math.round(params.tendency*100);
+  document.getElementById('exit').value  = Math.round(params.exit*100);
+  document.getElementById('shape').value = Math.round(params.shape*100);
+  Array.prototype.forEach.call(document.querySelectorAll('.trickBtn'), function(x){
+    x.classList.toggle('on', x.dataset.trick === params.trick);
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('#presetWrap button'), function(x){
+    x.classList.toggle('on', x.dataset.preset === params.preset);
+  });
+  document.getElementById('presetDesc').textContent = TILT_PRESETS[params.preset].label;
+}
+
 function updateHypList(){
   var HYP = HYPOTHESIS[params.trick];
   var keys = ["h0InclinationDeg","somersaultTurns","twistTurns","tiltMaxDeg"];
@@ -1626,7 +1639,22 @@ window.OA720 = {
   getSequence: function(){ return seq; },
   getMetrics : function(){ return met; },
   getParams  : function(){ return params; },
-  setParams  : function(p){ Object.assign(params, p); applyVenue(); rebuild(true); },
+  // 技を変えるときは UI のボタンと同じ既定値を適用してから上書きを反映する。
+  // （これをしないと setParams({trick:'bf'}) だけでは shape が前の技の値のまま残り、
+  //   ボタンで切り替えた場合と別の状態になってしまう）
+  setParams  : function(p){
+    if (p && p.trick && p.trick !== params.trick && TRICK_DEFAULTS[p.trick]){
+      Object.assign(params, {trick:p.trick}, TRICK_DEFAULTS[p.trick]);
+      syncControls();
+    }
+    Object.assign(params, p);
+    syncControls(); applyVenue(); rebuild(true);
+  },
+  // 計測結果を報告するときは、必ずこの状態も一緒に出すこと
+  state      : function(){
+    return { trick:params.trick, tendency:params.tendency, exit:params.exit,
+             shape:params.shape, preset:params.preset, verify:params.verify };
+  },
   seekTo     : function(t){ setPlaying(false); state.t = clamp(t, seq.timeRange.start, seq.timeRange.end); update(); },
   setView    : setView,
   renderNow  : function(){ controls.update(); renderer.render(scene, camera); },
