@@ -1,4 +1,13 @@
 'use strict';
+// ★このスクリプトは役目を終えました。実行しないでください。
+//   somTotal/twistTotal を「増分」に直すための後処理でしたが、
+//   その規約は gen_table.js 本体に取り込み済みで、gen_table.js だけで
+//   公開中の table.js を byte 一致で再生成できることを確認しました
+//   （sha256 1d93e426d6459d8f）。
+//   table.js を更新するときは gen_table.js を使ってください。
+console.error('fixup.js は役目を終えています。gen_table.js を使ってください。');
+process.exit(1);
+
 const fs=require('fs');
 let src=fs.readFileSync('table.js','utf8');
 const PT=eval(src+';PHYSICS_TABLE');

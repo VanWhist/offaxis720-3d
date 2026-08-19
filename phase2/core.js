@@ -1,8 +1,16 @@
 // ============================================================
 //  Phase 2 物理モード コア（依存なし・bunでもブラウザでも同じ結果）
 //  H0固定・関節角入力から ω を解いて姿勢を積分する縮約モデル
+//
+//  ★モデル名: arm-only-reduced-v1  （2026-08-19 凍結）
+//    このファイルの剛体構成・骨格・関節の入れ方は **これ以上変更しない**。
+//    理由: コーク720の映像を見てからモデルを変えると、仮説検証ではなく
+//          フィッティングになってしまうため。
+//    6剛体版など次のモデルは **別ファイル・別名（v2）** で作ること。
+//    バグ修正はしてよいが、その場合は MODEL_VERSION を上げて理由を残す。
 // ============================================================
 'use strict';
+const MODEL_VERSION='arm-only-reduced-v1';   // 凍結。構成を変えるときは別ファイルにする
 
 // ---- ベクトル / 3x3行列 / quaternion ----
 const vadd=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
@@ -257,7 +265,7 @@ function analyze(traj,H0){
   });
 }
 
-module.exports={DELEVA_M:DELEVA_M,buildSkeleton:buildSkeleton,poseAt:poseAt,
+module.exports={MODEL_VERSION:MODEL_VERSION,DELEVA_M:DELEVA_M,buildSkeleton:buildSkeleton,poseAt:poseAt,
   inertiaAndHrel:inertiaAndHrel,integrate:integrate,analyze:analyze,
   vlen:vlen,vunit:vunit,vdot:vdot,vcrs:vcrs,qToM:qToM,mv:mv,mT:mT,minv:minv,
   segInertia:segInertia};
