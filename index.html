@@ -54,7 +54,8 @@
   /* ---- Advanced overlay ---- */
   #adv{position:absolute;right:11px;top:44px;width:238px;max-width:64%;display:none;
     background:rgba(13,17,23,.93);border:1px solid var(--line);border-radius:6px;
-    padding:9px 10px;font-size:10.5px;line-height:1.55;pointer-events:auto;}
+    padding:9px 10px;font-size:10.5px;line-height:1.55;pointer-events:auto;
+    max-height:calc(100% - 58px);overflow-y:auto;-webkit-overflow-scrolling:touch;}
   #adv.show{display:block;}
   #adv h4{margin:0 0 5px;font-size:10.5px;letter-spacing:.08em;color:var(--mag);font-weight:700;}
   #adv label{display:block;margin:3px 0;color:#c9d4de;cursor:pointer;}
@@ -399,7 +400,11 @@ var ARM_PROFILES = {
     //   ※「腕がひねりを作っている」とは書かないこと。単一視点なので因果は断定できない。
     //   ※非対称の窓（τ0.23〜0.41）が板の面の入れ替わり（τ≈0.40）の直前に来る、
     //     という順序の一致までは言えるが、それ以上は言えない。
-    // 左右どちらの腕が外転側かは映像から確定できなかった。仮置きで左を外転側にしている。
+    // 左右どちらの腕が外転側かは確定できていない。仮置きで左を外転側にしている。
+    //   正面映像：身体が回転しているため映像の左右と選手の左右を対応づけられない。
+    //   横映像(bf.MOV)：τ0.29〜0.37 で同様に片腕だけが伸びる動きが見える（別試技でも
+    //     非対称は起きている）が、両腕が視線方向に重なるため左右を決められない。
+    //   → 確定には +45°斜め、または後方からの映像が要る（岳穂コーチに依頼済み）。
     sideAssignment: { abduct: "L", tuck: "R" },
     keys: [
       // [τ, 外転側spread, 体幹寄せ側spread, swing, elbow]
@@ -488,13 +493,55 @@ function landFade(tau){ return tau < 0.82 ? 1 : lerp(1, 0.10, smooth((tau-0.82)/
 
 
 /* =====================================================================
+   1b. PHYSICAL_PARAMS ── Phase 2（物理モード）用の物理量
+       出典: 物理パラメータ_Phase2_20260819.md（Van提供・概算値／カタログ帯）
+       ★すべて「仮」。実測値が出たらここだけ差し替える。
+       ★推測で細かい値を足さないこと。分からないものは null のままにする。
+   ===================================================================== */
+var PHYSICAL_PARAMS = {
+  provisional: true,
+  source: "Van提供の概算値・カタログ帯（2026-08-19）。実測ではない。",
+  athleteHeightM : { value: 1.70,  range:[1.65, 1.75], provisional:true, note:"±0.05" },
+  athleteMassKg  : { value: 65,    range:[60, 70],     provisional:true, note:"±5" },
+  skiLengthM     : { value: 1.72,  range:null,         provisional:true, note:"実物表記" },
+  skiMassKg      : { value: 1.65,  range:[1.50, 1.80], provisional:true, note:"片足・板本体のみ" },
+  bindingMassKg  : { value: 0.875, range:[0.50, 1.25], provisional:true, note:"片足。帯が2.5倍と最も粗い ← 精度を上げるならここから" },
+  bootMassKg     : { value: 1.75,  range:[1.38, 2.15], provisional:true, note:"片足・帯の中央値" },
+  // 足元合計（片足）= 板 + ビンディング + ブーツ = 4.28 kg（範囲 3.38〜5.20）
+  get footwearTotalKg(){
+    return this.skiMassKg.value + this.bindingMassKg.value + this.bootMassKg.value;
+  },
+  // ---- 未確定。Phase 2 実装時に決める ----
+  segmentTable   : null,   // 使用する人体セグメントパラメータ表。決めたら表の名前をここに書く
+  inertiaTensors : null,   // 各セグメントの慣性テンソル。表から計算する。数値をハードコードしないこと
+  offDiagonal    : null,   // 非対角成分の扱いは未決。まず主慣性のみで始めてよい
+  polesInArms    : null    // ポールを腕セグメントに含めるかは未決
+};
+// 参考（Cowork側の粗い手計算・モデルの計算結果ではない。ハードコードしないこと）:
+//   身体長軸まわり 3.17 → 4.47 kg·m²（+41%、範囲+32〜+49%）
+//   宙返り軸まわり  23.0 → 29.5  kg·m²（+28%）
+//   → 足元の装備だけでひねり軸の慣性が約4割増える。
+//     これが「ひねりを作る難しさは、実はtiltを作る難しさ」の実体。
+//     慣性半径を身長比（長軸0.13h／宙返り軸0.35h）で仮置きした概算なので、
+//     Phase 2 実装時は人体セグメントパラメータ表から計算し直す。
+
+
+/* =====================================================================
    2. ModelDefinition
       Phase 2 の reduced-order model（Pelvis / Torso / Arms / Legs+skis）と
       整合するようセグメントを分けてある。胸郭と骨盤は一体化しない。
       ※ ブーツとスキーは長辺を X（進行方向）に取る。Zに長くするとスノーボードになる。
    ===================================================================== */
 var MODEL = {
-  athlete: { heightM: 1.72, massKg: 68 },
+  // ★身長・体重は PHYSICAL_PARAMS（仮）を参照する。単一の出所にしておく。
+  athlete: { heightM: PHYSICAL_PARAMS.athleteHeightM.value,
+             massKg:  PHYSICAL_PARAMS.athleteMassKg.value,
+             provisional: true },
+  // ★注意：下の bodies[] のセグメント質量は、Phase 2 以前に暫定で置いた値で、
+  //   身体ぶんの合計は 68.1 kg。PHYSICAL_PARAMS.athleteMassKg（65 kg）と一致していない。
+  //   配分は未指定なので、Phase 2 実装時に **名前を明記した人体セグメントパラメータ表** から
+  //   athleteMassKg に合わせて計算し直すこと（PHYSICAL_PARAMS.segmentTable に表名を記録する）。
+  //   ここで比例配分して辻褄だけ合わせない（精度があるように見えてしまうため）。
   // joints: 各セグメントの親と、親から見た関節中心オフセット
   joints: [
     { name:"spine",     parent:"pelvis", offset:[0, 0.11, 0] },
@@ -526,10 +573,11 @@ var MODEL = {
     { name:"shankL",   joint:"kneeL",     shape:"box",    dim:[0.115,0.40,0.115],com:[0,-0.20,0],      mass: 3.5, color:0x9aa7b4 },
     { name:"shankR",   joint:"kneeR",     shape:"box",    dim:[0.115,0.40,0.115],com:[0,-0.20,0],      mass: 3.5, color:0x9aa7b4 },
     // ── ブーツ・スキー：長辺は X（進行方向）。
-    { name:"bootL",    joint:"ankleL",    shape:"box",    dim:[0.28,0.17,0.14],  com:[0.03,-0.08,0],   mass: 1.8, color:0x2b323a },
-    { name:"bootR",    joint:"ankleR",    shape:"box",    dim:[0.28,0.17,0.14],  com:[0.03,-0.08,0],   mass: 1.8, color:0x2b323a },
-    { name:"skiL",     joint:"ankleL",    shape:"box",    dim:[1.70,0.028,0.105],com:[0.14,-0.175,0],  mass: 1.6, color:0x1c2128 },
-    { name:"skiR",     joint:"ankleR",    shape:"box",    dim:[1.70,0.028,0.105],com:[0.14,-0.175,0],  mass: 1.6, color:0x1c2128 },
+    // ブーツ・スキーの質量は PHYSICAL_PARAMS（仮）から取る。ビンディングは板に載るので板側に含める。
+    { name:"bootL",    joint:"ankleL",    shape:"box",    dim:[0.28,0.17,0.14],  com:[0.03,-0.08,0],   mass: PHYSICAL_PARAMS.bootMassKg.value, color:0x2b323a },
+    { name:"bootR",    joint:"ankleR",    shape:"box",    dim:[0.28,0.17,0.14],  com:[0.03,-0.08,0],   mass: PHYSICAL_PARAMS.bootMassKg.value, color:0x2b323a },
+    { name:"skiL",     joint:"ankleL",    shape:"box",    dim:[1.72,0.028,0.105],com:[0.14,-0.175,0],  mass: PHYSICAL_PARAMS.skiMassKg.value + PHYSICAL_PARAMS.bindingMassKg.value, color:0x1c2128 },
+    { name:"skiR",     joint:"ankleR",    shape:"box",    dim:[1.72,0.028,0.105],com:[0.14,-0.175,0],  mass: PHYSICAL_PARAMS.skiMassKg.value + PHYSICAL_PARAMS.bindingMassKg.value, color:0x1c2128 },
     { name:"tipL",     joint:"ankleL",    shape:"box",    dim:[0.16,0.05,0.105], com:[0.83,-0.155,0],  mass: 0.1, color:0x1c2128 },
     { name:"tipR",     joint:"ankleR",    shape:"box",    dim:[0.16,0.05,0.105], com:[0.83,-0.155,0],  mass: 0.1, color:0x1c2128 }
   ],
@@ -1496,6 +1544,22 @@ function updateHypList(){
     html += '<dd><span style="color:#6b7885">' + (sp ? sp.source : '未測定') + '</span></dd>';
   }
   html += '<dt style="color:#8b98a5;margin-top:7px">数値の比率（contact ○% / aerial ○%）は測定していないため表示しません。</dt>';
+
+  // Phase 2 用の物理パラメータ（すべて仮）
+  var PP = PHYSICAL_PARAMS;
+  html += '<dt style="color:#b58a4a;margin-top:7px">Phase 2 用の物理量［すべて仮］</dt>';
+  [['身長 [m]','athleteHeightM'],['体重 [kg]','athleteMassKg'],['スキー長 [m]','skiLengthM'],
+   ['スキー本体 [kg/片足]','skiMassKg'],['ビンディング [kg/片足]','bindingMassKg'],
+   ['ブーツ [kg/片足]','bootMassKg']].forEach(function(r){
+    var o = PP[r[1]];
+    html += '<dd>' + r[0] + '：<b style="color:#c9d4de">' + o.value + '</b>'
+          + (o.range ? ' <span style="color:#6b7885">（' + o.range[0] + '〜' + o.range[1] + '）</span>' : '')
+          + '</dd>';
+  });
+  html += '<dd>足元合計：<b style="color:#c9d4de">' + PP.footwearTotalKg.toFixed(2) + '</b> kg/片足</dd>';
+  html += '<dd><span style="color:#6b7885">実測ではなく概算値。慣性テンソルは未設定（Phase 2 実装時に'
+        + '人体セグメントパラメータ表から計算する）。</span></dd>';
+
   document.getElementById('hypList').innerHTML = html;
 }
 
@@ -1644,7 +1708,7 @@ requestAnimationFrame(loop);
 
 // デバッグ／検証用（Phase 3のAnalyzer共有を見据えて外に出しておく）
 window.OA720 = {
-  convention: CONVENTION, hypothesis: HYPOTHESIS, model: MODEL,
+  convention: CONVENTION, hypothesis: HYPOTHESIS, model: MODEL, physicalParams: PHYSICAL_PARAMS,
   getSequence: function(){ return seq; },
   getMetrics : function(){ return met; },
   getParams  : function(){ return params; },
@@ -1684,9 +1748,14 @@ window.OA720 = {
   //   ★飛行中に符号反転は2回ある（shape=0 で τ≒0.475 と τ≒0.940）。「1回」ではない。
   //     位置はパラメータ依存なので、報告するときは OA720.state() を併記すること。
   //   ★1回目は正面映像と比較できる（実測は滞空の約40%、モデルは47.5%でズレがある）。
-  //     2回目は正面映像では読めない区間：τ0.85以降は選手がフレーム下端に近づき、
+  //   ★2回目（τ≒0.940）について：
+  //     正面映像では読めない区間。τ0.85以降は選手がフレーム下端に近づき、
   //     板が暗いデッキと重なるか画面外に出る（f90〜f94 はブーツしか見えない）。
-  //     実写で否定も肯定もできないので、合わせ込みも削除もしない。
+  //     横映像(bf.MOV)の τ0.86〜1.00 では板が「面が広い」→「エッジ向き」へ変わって見え、
+  //     モデルでも同区間で法線のZ成分が 0.368(τ0.862) → 0.042(τ0.997) と減るので整合する。
+  //     ただし正面カメラが見るのは法線のX成分、横カメラが見るのはZ成分で別の量なので、
+  //     **X成分の符号反転そのものは未確認**。「実測で確認済み」とは書かないこと。
+  //     否定も肯定もできないので、合わせ込みも削除もしない。
   //   |faceX| ≒ 1 … 板の面がカメラを向く（幅広く見える）
   //   |faceX| ≒ 0 … エッジ向き（細く見える）
   //   side は左右差。0 なら左右のスキーは完全に平行。
